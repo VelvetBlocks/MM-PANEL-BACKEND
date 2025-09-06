@@ -1,16 +1,23 @@
-import { BadRequestException, Injectable } from "@nestjs/common";
-import axios from "axios";
-import * as crypto from "crypto";
-import { UsersService } from "src/users/users.service";
-import { CreateOrderDto } from "./dto/create-order-dto";
-import https from "https";
-import qs from "qs";
-import Bottleneck from "bottleneck";
-import { CreateBatchOrderDto } from "./dto/create-batch-order-dto";
+import { BadRequestException, Injectable } from '@nestjs/common';
+import axios from 'axios';
+import * as crypto from 'crypto';
+import { UsersService } from 'src/users/users.service';
+import { CreateOrderMexcDto } from './dto/create-order-dto';
+import https from 'https';
+import qs from 'qs';
+import Bottleneck from 'bottleneck';
+import { CreateBatchOrderMexcDto } from './dto/create-batch-order-dto';
+
+export type MexcBatchOrderResponse = {
+  code?: number;
+  orderId?: string;
+  clientOrderId?: string;
+  msg?: string;
+};
 
 @Injectable()
 export class MexcService {
-  private readonly baseUrl = "https://api.mexc.com";
+  private readonly baseUrl = 'https://api.mexc.com';
   private readonly API_KEY = process.env.MEXC_API_KEY!;
   private readonly API_SECRET = process.env.MEXC_API_SECRET!;
 
@@ -26,16 +33,16 @@ export class MexcService {
    * Rate-limited request helper
    * ------------------------- */
   private async request<T>(
-    method: "GET" | "POST" | "DELETE",
+    method: 'GET' | 'POST' | 'DELETE',
     url: string,
     body?: any,
-    retries = 3
+    retries = 3,
   ): Promise<T> {
     const headers: Record<string, string> = {
-      "X-MEXC-APIKEY": this.API_KEY,
+      'X-MEXC-APIKEY': this.API_KEY,
     };
 
-    if (method === "POST") {
+    if (method === 'POST') {
       // The MEXC API for order creation requires a POST request, but the
       // parameters and signature are still in the URL, not the body.
       // We will add an empty body to satisfy Axios's POST requirements.
@@ -46,7 +53,7 @@ export class MexcService {
 
     const agent = new https.Agent({
       family: 4,
-      minVersion: "TLSv1.2",
+      minVersion: 'TLSv1.2',
       keepAlive: false,
     });
 
@@ -64,17 +71,21 @@ export class MexcService {
             timeout: 15000,
             proxy: false,
             maxRedirects: 0,
-            validateStatus: (status) => status < 500,
+            validateStatus: (status) => true,
           });
-          console.log("res ------------> ", res.data);
+          console.log('Full Axios response:', {
+            status: res.status,
+            headers: res.headers,
+            data: res.data,
+          });
 
           return res.data;
         });
       } catch (err: any) {
         lastError = err;
         if (
-          ["ETIMEDOUT", "ECONNRESET", "EPIPE"].includes(err.code) ||
-          err.message.includes("TLS")
+          ['ETIMEDOUT', 'ECONNRESET', 'EPIPE'].includes(err.code) ||
+          err.message.includes('TLS')
         ) {
           console.warn(`Request failed, retrying ${i + 1}/${retries}...`);
           await new Promise((r) => setTimeout(r, 500));
@@ -83,74 +94,62 @@ export class MexcService {
     }
     console.error(url, lastError.response?.data || lastError.message);
     throw new BadRequestException(
-      lastError.response?.data?.msg ||
-        lastError.message ||
-        "MEXC request failed"
+      lastError.response?.data?.msg || lastError.message || 'MEXC request failed',
     );
   }
 
   /** -------------------------
    * Create order
    * ------------------------- */
-  async createOrder(userId: string, orderDto: CreateOrderDto, test = true) {
-    await this.usersService.getMe(userId);
-
-    const endpoint = test ? "/api/v3/order/test" : "/api/v3/order";
-
+  async createOrder(orderDto: CreateOrderMexcDto, test = true) {
+    const endpoint = test ? '/api/v3/order/test' : '/api/v3/order';
+    console.log('endpoint ==============> ', endpoint);
     const params: Record<string, any> = {
       symbol: orderDto.symbol,
       side: orderDto.side,
       type: orderDto.type,
       // FIX: Ensure quantity is a valid number before using
       quantity:
-        typeof orderDto.quantity === "string"
-          ? parseFloat(orderDto.quantity)
-          : orderDto.quantity,
+        typeof orderDto.quantity === 'string' ? parseFloat(orderDto.quantity) : orderDto.quantity,
       timestamp: Date.now(),
       // Adding recvWindow as it's a common cause of signature failures
       recvWindow: 5000,
     };
 
-    if (orderDto.type === "LIMIT") {
+    if (orderDto.type === 'LIMIT') {
       // FIX: Ensure price is a valid number before using
       params.price =
-        typeof orderDto.price === "string"
-          ? parseFloat(orderDto.price)
-          : orderDto.price;
-      params.timeInForce = "GTC";
+        typeof orderDto.price === 'string' ? parseFloat(orderDto.price) : orderDto.price;
+      params.timeInForce = 'GTC';
     }
 
     // Log the parameters before stringifying for debugging
-    console.log("Pre-stringified params:", params);
+    console.log('Pre-stringified params:', params);
 
     // Use qs.stringify to ensure consistent parameter sorting for the signature
     const queryString = qs.stringify(params);
     const signature = crypto
-      .createHmac("sha256", this.API_SECRET)
+      .createHmac('sha256', this.API_SECRET)
       .update(queryString)
-      .digest("hex");
+      .digest('hex');
 
     const url = `${this.baseUrl}${endpoint}?${queryString}&signature=${signature}`;
 
-    console.log("Generated URL:", url); // Log the full URL for debugging
+    console.log('Generated URL:', url); // Log the full URL for debugging
 
     // The POST request is made with the parameters in the URL, and an empty body.
-    return this.request("POST", url);
+    return this.request('POST', url);
   }
 
   /** -------------------------
    * Create batch orders
    * ------------------------- */
   async createBatchOrders(
-    userId: string,
-    batchDto: CreateBatchOrderDto,
-    test = true
-  ) {
-    await this.usersService.getMe(userId);
+    batchDto: CreateBatchOrderMexcDto,
+    test = false,
+  ): Promise<MexcBatchOrderResponse[]> {
+    const endpoint = test ? '/api/v3/batchOrders/test' : '/api/v3/batchOrders';
 
-    const endpoint = test ? "/api/v3/batchOrders/test" : "/api/v3/batchOrders";
-
-    // Map orders into MEXC format
     const batchOrders = batchDto.batchOrders.map((o) => {
       const order: any = {
         symbol: o.symbol,
@@ -159,9 +158,9 @@ export class MexcService {
         quantity: o.quantity,
       };
 
-      if (o.type === "LIMIT") {
+      if (o.type === 'LIMIT') {
         order.price = o.price;
-        order.timeInForce = "GTC";
+        order.timeInForce = 'GTC';
       }
 
       if (o.newClientOrderId) {
@@ -177,16 +176,19 @@ export class MexcService {
       recvWindow: 5000,
     };
 
-    const queryString = qs.stringify(params, { encode: false }); // keep JSON intact
+    const queryString = Object.entries(params)
+      .map(([key, val]) => `${key}=${encodeURIComponent(val)}`)
+      .join('&');
+
     const signature = crypto
-      .createHmac("sha256", this.API_SECRET)
+      .createHmac('sha256', this.API_SECRET)
       .update(queryString)
-      .digest("hex");
+      .digest('hex');
 
     const url = `${this.baseUrl}${endpoint}?${queryString}&signature=${signature}`;
-    console.log("Batch Orders URL:", url);
 
-    return this.request("POST", url);
+    // ✅ Correctly typed response
+    return this.request<MexcBatchOrderResponse[]>('POST', url);
   }
 
   /** -------------------------
@@ -198,13 +200,13 @@ export class MexcService {
     const params: Record<string, any> = { timestamp: Date.now() };
     const queryString = new URLSearchParams(params).toString();
     const signature = crypto
-      .createHmac("sha256", this.API_SECRET)
+      .createHmac('sha256', this.API_SECRET)
       .update(queryString)
-      .digest("hex");
+      .digest('hex');
 
     const url = `${this.baseUrl}/api/v3/account?${queryString}&signature=${signature}`;
 
-    return this.request("GET", url);
+    return this.request('GET', url);
   }
 
   /** -------------------------
@@ -213,9 +215,9 @@ export class MexcService {
   async cancelOrder(
     userId: string,
     symbol: string,
-    opts: { orderId?: string; origClientOrderId?: string }
+    opts: { orderId?: string; origClientOrderId?: string },
   ) {
-    await this.usersService.getMe(userId);
+    // await this.usersService.getMe(userId);
 
     const params: Record<string, any> = {
       symbol,
@@ -231,46 +233,43 @@ export class MexcService {
     }
 
     if (!opts.orderId && !opts.origClientOrderId) {
-      throw new BadRequestException(
-        "Either orderId or origClientOrderId must be provided"
-      );
+      throw new BadRequestException('Either orderId or origClientOrderId must be provided');
     }
 
     const queryString = qs.stringify(params);
     const signature = crypto
-      .createHmac("sha256", this.API_SECRET)
+      .createHmac('sha256', this.API_SECRET)
       .update(queryString)
-      .digest("hex");
+      .digest('hex');
 
     const url = `${this.baseUrl}/api/v3/order?${queryString}&signature=${signature}`;
 
-    console.log("Cancel Order URL:", url);
+    console.log('Cancel Order URL:', url);
 
-    return this.request("DELETE", url);
+    return this.request('DELETE', url);
   }
 
   /** -------------------------
    * Cancel all open orders for a symbol
    * ------------------------- */
-  async cancelAllOrders(userId: string, symbol: string) {
-    await this.usersService.getMe(userId);
-
+  async cancelAllCoinWiseOrders(symbol: string, orderIds: string[]) {
     const params: Record<string, any> = {
       symbol,
+      orderIds: JSON.stringify(orderIds),
       timestamp: Date.now(),
       recvWindow: 5000,
     };
 
     const queryString = qs.stringify(params);
     const signature = crypto
-      .createHmac("sha256", this.API_SECRET)
+      .createHmac('sha256', this.API_SECRET)
       .update(queryString)
-      .digest("hex");
+      .digest('hex');
 
     const url = `${this.baseUrl}/api/v3/openOrders?${queryString}&signature=${signature}`;
 
-    console.log("Cancel All Orders URL:", url);
+    console.log('Cancel All Orders URL ---> :', url);
 
-    return this.request("DELETE", url);
+    return this.request('DELETE', url);
   }
 }

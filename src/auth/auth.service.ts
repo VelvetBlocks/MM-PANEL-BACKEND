@@ -5,21 +5,21 @@ import {
   Injectable,
   NotFoundException,
   UnauthorizedException,
-} from "@nestjs/common";
-import { ConfigType } from "@nestjs/config";
-import { JwtService } from "@nestjs/jwt";
-import { InjectRepository } from "@nestjs/typeorm";
-import { randomUUID } from "crypto";
-import { Repository } from "typeorm";
-import jwtConfig from "../common/config/jwt.config";
-import { MysqlErrorCode } from "../common/enums/error-codes.enum";
-import { ActiveUserData } from "../common/interfaces/active-user-data.interface";
-import { RedisService } from "../redis/redis.service";
-import { User } from "../users/entities/user.entity";
-import { BcryptService } from "./bcrypt.service";
-import { SignInDto } from "./dto/sign-in.dto";
-import { SignUpDto, UpdateUserDto } from "./dto/sign-up.dto";
-import { ChangePasswordDto } from "./dto/users-pw-change";
+} from '@nestjs/common';
+import { ConfigType } from '@nestjs/config';
+import { JwtService } from '@nestjs/jwt';
+import { InjectRepository } from '@nestjs/typeorm';
+import { randomUUID } from 'crypto';
+import { Repository } from 'typeorm';
+import jwtConfig from '../common/config/jwt.config';
+import { MysqlErrorCode } from '../common/enums/error-codes.enum';
+import { ActiveUserData } from '../common/interfaces/active-user-data.interface';
+import { RedisService } from '../redis/redis.service';
+import { User } from '../users/entities/user.entity';
+import { BcryptService } from './bcrypt.service';
+import { SignInDto } from './dto/sign-in.dto';
+import { SignUpDto, UpdateUserDto } from './dto/sign-up.dto';
+import { ChangePasswordDto } from './dto/users-pw-change';
 
 @Injectable()
 export class AuthService {
@@ -30,7 +30,7 @@ export class AuthService {
     private readonly jwtService: JwtService,
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
-    private readonly redisService: RedisService
+    private readonly redisService: RedisService,
   ) {}
 
   async signUp(signUpDto: SignUpDto): Promise<User> {
@@ -59,12 +59,12 @@ export class AuthService {
       },
     });
     if (!user) {
-      throw new BadRequestException("Invalid email");
+      throw new BadRequestException('Invalid email');
     }
 
     const isPasswordMatch = await this.bcryptService.compare(pw, user.pw);
     if (!isPasswordMatch) {
-      throw new BadRequestException("Invalid password");
+      throw new BadRequestException('Invalid password');
     }
 
     return await this.generateAccessToken(user);
@@ -77,13 +77,13 @@ export class AuthService {
   async changePassword(userId: string, dto: ChangePasswordDto): Promise<void> {
     const user = await this.userRepository.findOne({ where: { id: userId } });
     if (!user) {
-      throw new UnauthorizedException("User not found");
+      throw new UnauthorizedException('User not found');
     }
 
     // verify current password
     const isMatch = await this.bcryptService.compare(dto.pw, user.pw);
     if (!isMatch) {
-      throw new UnauthorizedException("Current password is incorrect");
+      throw new UnauthorizedException('Current password is incorrect');
     }
 
     // hash new password
@@ -103,9 +103,7 @@ export class AuthService {
     return await this.userRepository.save(user);
   }
 
-  async generateAccessToken(
-    user: Partial<User>
-  ): Promise<{ accessToken: string }> {
+  async generateAccessToken(user: Partial<User>): Promise<{ accessToken: string }> {
     const tokenId = randomUUID();
 
     await this.redisService.insert(`user-${user.id}`, tokenId);
@@ -119,7 +117,7 @@ export class AuthService {
       {
         secret: this.jwtConfiguration.secret,
         expiresIn: this.jwtConfiguration.accessTokenTtl,
-      }
+      },
     );
 
     return { accessToken };

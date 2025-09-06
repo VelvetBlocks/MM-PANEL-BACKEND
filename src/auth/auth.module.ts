@@ -9,10 +9,7 @@ import { User } from '../users/entities/user.entity';
 import jwtConfig from '../common/config/jwt.config';
 
 @Module({
-  imports: [
-    TypeOrmModule.forFeature([User]),
-    JwtModule.registerAsync(jwtConfig.asProvider()),
-  ],
+  imports: [TypeOrmModule.forFeature([User]), JwtModule.registerAsync(jwtConfig.asProvider())],
   controllers: [AuthController],
   providers: [AuthService, BcryptService],
   exports: [JwtModule, AuthService],

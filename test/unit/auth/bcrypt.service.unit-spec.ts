@@ -23,8 +23,7 @@ describe('BcryptService', () => {
   describe('compare', () => {
     it('should return true if the data matches the encrypted string', async () => {
       const data = 'password';
-      const encrypted =
-        '$2b$10$iUp/PtR8IlnyKFD5ZjP0X.DUg4.zFec3jr/XoMm9/rIXC0dzaRUmS';
+      const encrypted = '$2b$10$iUp/PtR8IlnyKFD5ZjP0X.DUg4.zFec3jr/XoMm9/rIXC0dzaRUmS';
 
       const result = await bcryptService.compare(data, encrypted);
 
@@ -33,8 +32,7 @@ describe('BcryptService', () => {
 
     it('should return false if the data does not match the encrypted string', async () => {
       const data = 'password';
-      const encrypted =
-        '$2b$10$iUp/PtR8IlnyKFD5ZjP0X.DUg4.zFec3jr/XoMm9/rIXC0dzaRUmS';
+      const encrypted = '$2b$10$iUp/PtR8IlnyKFD5ZjP0X.DUg4.zFec3jr/XoMm9/rIXC0dzaRUmS';
 
       const result = await bcryptService.compare('wrong-password', encrypted);
 

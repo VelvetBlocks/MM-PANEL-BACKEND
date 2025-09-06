@@ -41,9 +41,7 @@ describe('UsersService', () => {
       const userId = '123';
       jest.spyOn(userRepository, 'findOne').mockResolvedValue(undefined);
 
-      await expect(usersService.getMe(userId)).rejects.toThrow(
-        BadRequestException,
-      );
+      await expect(usersService.getMe(userId)).rejects.toThrow(BadRequestException);
     });
   });
 });

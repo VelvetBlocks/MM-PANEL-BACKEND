@@ -1,10 +1,9 @@
 {
-  "name": "nestjs-authentication-and-authorization",
+  "name": "mm-panel",
   "version": "0.0.1",
-  "description": "NestJS authentication and authorization using Bcrypt, JWT & Redis",
-  "author": "Anil Ahir",
-  "private": false,
-  "license": "MIT",
+  "description": "mm-panel exchange wise order",
+  "author": "Tech Velvet",
+  "private": true,
   "scripts": {
     "prebuild": "rimraf dist",
     "build": "nest build",
@@ -19,9 +18,7 @@
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "NODE_ENV=test jest --config ./test/e2e/jest-e2e.json --runInBand --detectOpenHandles",
     "test:unit": "NODE_ENV=test jest --config ./test/unit/jest-unit.json --runInBand",
-    "prepare": "husky install",
-    "docker:up": "docker-compose up -d -V --build",
-    "docker:down": "docker-compose down"
+    "prepare": "husky install"
   },
   "dependencies": {
     "@nestjs/common": "^11.1.6",

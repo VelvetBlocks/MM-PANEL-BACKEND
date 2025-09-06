@@ -1,11 +1,4 @@
-import {
-  Controller,
-  Post,
-  Body,
-  HttpCode,
-  HttpStatus,
-  Res,
-} from "@nestjs/common";
+import { Controller, Post, Body, HttpCode, HttpStatus, Res } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
@@ -14,90 +7,87 @@ import {
   ApiOkResponse,
   ApiTags,
   ApiUnauthorizedResponse,
-} from "@nestjs/swagger";
-import { ActiveUser } from "../common/decorators/active-user.decorator";
-import { Public } from "../common/decorators/public.decorator";
-import { AuthService } from "./auth.service";
-import { SignInDto } from "./dto/sign-in.dto";
-import { SignUpDto } from "./dto/sign-up.dto";
-import { Response } from "express";
-import { ChangePasswordDto } from "./dto/users-pw-change";
-import { User } from "src/users/entities/user.entity";
-import { generateStrongPassword } from "src/common/utils";
+} from '@nestjs/swagger';
+import { ActiveUser } from '../common/decorators/active-user.decorator';
+import { Public } from '../common/decorators/public.decorator';
+import { AuthService } from './auth.service';
+import { SignInDto } from './dto/sign-in.dto';
+import { SignUpDto } from './dto/sign-up.dto';
+import { Response } from 'express';
+import { ChangePasswordDto } from './dto/users-pw-change';
+import { User } from 'src/users/entities/user.entity';
+import { generateStrongPassword } from 'src/common/utils';
 
-@ApiTags("auth")
-@Controller("auth")
+@ApiTags('auth')
+@Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @ApiConflictResponse({
-    description: "User already exists",
+    description: 'User already exists',
   })
   @ApiBadRequestResponse({
-    description: "Return errors for invalid sign up fields",
+    description: 'Return errors for invalid sign up fields',
   })
   @ApiCreatedResponse({
-    description: "User has been successfully signed up",
+    description: 'User has been successfully signed up',
   })
   @Public()
-  @Post("sign-up")
+  @Post('sign-up')
   signUp(@Body() signUpDto: SignUpDto): Promise<User> {
     return this.authService.signUp(signUpDto);
   }
 
-  @ApiOkResponse({ description: "User has been successfully signed in" })
+  @ApiOkResponse({ description: 'User has been successfully signed in' })
   @HttpCode(HttpStatus.OK)
   @Public()
-  @Post("sign-in")
+  @Post('sign-in')
   async signIn(
     @Body() signInDto: SignInDto,
-    @Res({ passthrough: true }) res: Response
+    @Res({ passthrough: true }) res: Response,
   ): Promise<{ success: boolean }> {
     const { accessToken } = await this.authService.signIn(signInDto);
 
     // set token in response header
-    res.setHeader("session-token", accessToken);
+    res.setHeader('session-token', accessToken);
 
     return { success: true };
   }
 
-  @ApiOkResponse({ description: "Password has been successfully changed" })
+  @ApiOkResponse({ description: 'Password has been successfully changed' })
   @ApiUnauthorizedResponse({
-    description: "Invalid current password or unauthorized",
+    description: 'Invalid current password or unauthorized',
   })
   @ApiBearerAuth()
   @HttpCode(HttpStatus.OK)
-  @Post("users_pw_change")
+  @Post('users_pw_change')
   async changePassword(
-    @ActiveUser("id") userId: string,
-    @Body() dto: ChangePasswordDto
+    @ActiveUser('id') userId: string,
+    @Body() dto: ChangePasswordDto,
   ): Promise<{ success: boolean }> {
     await this.authService.changePassword(userId, dto);
     return { success: true };
   }
 
-  @ApiOkResponse({ description: "Password has been successfully changed" })
+  @ApiOkResponse({ description: 'Password has been successfully changed' })
   @ApiUnauthorizedResponse({
-    description: "Invalid current password or unauthorized",
+    description: 'Invalid current password or unauthorized',
   })
   @ApiBearerAuth()
   @HttpCode(HttpStatus.OK)
-  @Post("users_pw_reset")
-  async passwordReset(
-    @ActiveUser("id") userId: string,
-    @Body("id") id: string
-  ): Promise<User> {
+  @Post('users_pw_reset')
+  async passwordReset(@ActiveUser('id') userId: string, @Body('id') id: string): Promise<User> {
     const pw = await await generateStrongPassword();
     const user = await this.authService.resetPassword(id, pw);
     return { ...user, pw } as User;
   }
 
-  @ApiUnauthorizedResponse({ description: "Unauthorized" })
-  @ApiOkResponse({ description: "User has been successfully signed out" })
+  @ApiUnauthorizedResponse({ description: 'Unauthorized' })
+  @ApiOkResponse({ description: 'User has been successfully signed out' })
   @ApiBearerAuth()
   @HttpCode(HttpStatus.OK)
-  @Post("sign-out")
-  signOut(@ActiveUser("id") userId: string): Promise<void> {
+  @Post('sign-out')
+  signOut(@ActiveUser('id') userId: string): Promise<void> {
     return this.authService.signOut(userId);
   }
 }

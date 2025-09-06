@@ -8,9 +8,18 @@ import {
   MaxLength,
   IsEnum,
 } from 'class-validator';
+import { Exchange } from 'src/coins/entities/coin.entity';
 import { ORDER_SIDE, ORDER_TYPE } from 'src/order/entities/order.entity';
 
-export class CreateOrderMexcDto {
+export class CreateOrderDto {
+  @ApiProperty({
+    description: 'Exchange for coin',
+    enum: Exchange,
+    example: Exchange.MEXC,
+  })
+  @IsEnum(Exchange, { message: 'Exchange must be one of MEXC, HTX, BINANCE' })
+  exchange: Exchange;
+
   @ApiProperty({
     description: 'Trading pair symbol',
     example: 'LFUSDT',

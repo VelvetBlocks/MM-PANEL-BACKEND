@@ -44,9 +44,7 @@ export class AppFactory {
 
     await app.init();
 
-    const dataSource = module.get<DataSource>(
-      getDataSourceToken() as Type<DataSource>,
-    );
+    const dataSource = module.get<DataSource>(getDataSourceToken() as Type<DataSource>);
 
     const redis = module.get<Redis>(IORedisKey);
 

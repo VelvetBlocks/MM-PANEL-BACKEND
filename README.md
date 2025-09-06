@@ -22,7 +22,7 @@ NestJS Authentication without Passport using Bcrypt, JWT and Redis
 - Bcrypt
 - TypeORM + MySQL
 - Redis
-- Docker
+- MEXC API INTEGRATION
 
 ## Setup
 
@@ -51,43 +51,6 @@ $ npm run start:dev
 $ npm run start:prod
 ```
 
-## Docker for development
-
-```bash
-# start the application
-$ npm run docker:up
-
-# stop the application
-$ npm run docker:down
-```
-
 ## Swagger documentation
 
-- [localhost:3000/docs](http://localhost:3000/docs)
-
-## References
-
-- [NestJS Authentication without Passport](https://trilon.io/blog/nestjs-authentication-without-passport)
-- [NestJS, Redis and Postgres local development with Docker Compose](https://www.tomray.dev/nestjs-docker-compose-postgres)
-
-## Author
-
-👤 **Anil Ahir**
-
-- Twitter: [@anilahir220](https://twitter.com/anilahir220)
-- Github: [@anilahir](https://github.com/anilahir)
-- LinkedIn: [@anilahir](https://www.linkedin.com/in/anilahir)
-
-## Show your support
-
-Give a ⭐️ if this project helped you!
-
-## Related projects
-
-Explore more NestJS example projects:
-
-[![GraphQL example](https://github-readme-stats.vercel.app/api/pin/?username=anilahir&repo=nestjs-graphql-demo)](https://github.com/anilahir/nestjs-graphql-demo)
-
-## License
-
-Release under the terms of [MIT](./LICENSE)
+- [localhost:8443/docs](http://localhost:8443/docs)

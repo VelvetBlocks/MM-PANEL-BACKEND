@@ -51,10 +51,7 @@ describe('App (e2e)', () => {
           password: 'Pass#123',
         };
 
-        return request(server)
-          .post('/auth/sign-up')
-          .send(signUpDto)
-          .expect(HttpStatus.CREATED);
+        return request(server).post('/auth/sign-up').send(signUpDto).expect(HttpStatus.CREATED);
       });
 
       it('should return 400 for invalid sign up fields', async () => {
@@ -65,10 +62,7 @@ describe('App (e2e)', () => {
           password: 'Pass#123',
         };
 
-        return request(server)
-          .post('/auth/sign-up')
-          .send(signUpDto)
-          .expect(HttpStatus.BAD_REQUEST);
+        return request(server).post('/auth/sign-up').send(signUpDto).expect(HttpStatus.BAD_REQUEST);
       });
 
       it('should return 409 if user already exists', async () => {
@@ -82,10 +76,7 @@ describe('App (e2e)', () => {
           password: 'Pass#123',
         };
 
-        return request(server)
-          .post('/auth/sign-up')
-          .send(signUpDto)
-          .expect(HttpStatus.CONFLICT);
+        return request(server).post('/auth/sign-up').send(signUpDto).expect(HttpStatus.CONFLICT);
       });
     });
 
@@ -118,10 +109,7 @@ describe('App (e2e)', () => {
           password: '',
         };
 
-        return request(server)
-          .post('/auth/sign-in')
-          .send(signInDto)
-          .expect(HttpStatus.BAD_REQUEST);
+        return request(server).post('/auth/sign-in').send(signInDto).expect(HttpStatus.BAD_REQUEST);
       });
     });
 
@@ -141,9 +129,7 @@ describe('App (e2e)', () => {
       });
 
       it('should return 401 if not authorized', async () => {
-        return request(server)
-          .post('/auth/sign-out')
-          .expect(HttpStatus.UNAUTHORIZED);
+        return request(server).post('/auth/sign-out').expect(HttpStatus.UNAUTHORIZED);
       });
     });
   });

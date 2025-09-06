@@ -47,10 +47,7 @@ export class JwtAuthGuard implements CanActivate {
         this.jwtConfiguration,
       );
 
-      const isValidToken = await this.redisService.validate(
-        `user-${payload.id}`,
-        payload.tokenId,
-      );
+      const isValidToken = await this.redisService.validate(`user-${payload.id}`, payload.tokenId);
       if (!isValidToken) {
         throw new UnauthorizedException('Authorization token is not valid');
       }

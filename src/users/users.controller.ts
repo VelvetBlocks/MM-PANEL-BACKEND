@@ -1,19 +1,10 @@
 import { Body, Controller, Delete, Param, Post, Query } from '@nestjs/common';
-import {
-  ApiBearerAuth,
-  ApiOkResponse,
-  ApiTags,
-  ApiUnauthorizedResponse,
-} from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOkResponse, ApiTags, ApiUnauthorizedResponse } from '@nestjs/swagger';
 
 import { ActiveUser } from '../common/decorators/active-user.decorator';
 import { User } from './entities/user.entity';
 import { UsersService } from './users.service';
-import {
-  CreateUserDto,
-  SignUpDto,
-  UpdateUserDto,
-} from 'src/auth/dto/sign-up.dto';
+import { CreateUserDto, SignUpDto, UpdateUserDto } from 'src/auth/dto/sign-up.dto';
 import { AuthService } from 'src/auth/auth.service';
 import { generateStrongPassword } from 'src/common/utils';
 
@@ -72,10 +63,7 @@ export class UsersController {
   @ApiOkResponse({ description: 'List of users with pagination', type: [User] })
   @ApiBearerAuth()
   @Post()
-  async findAll(
-    @Query('page') page = 1,
-    @Query('limit') limit = 10,
-  ): Promise<any> {
+  async findAll(@Query('page') page = 1, @Query('limit') limit = 10): Promise<any> {
     return this.usersService.findAll(Number(page), Number(limit));
   }
 }

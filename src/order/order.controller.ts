@@ -6,6 +6,7 @@ import { ActiveUser } from 'src/common/decorators/active-user.decorator';
 import { CreateOrderDto } from './dto/create-order-dto';
 import { CreateBatchOrderDto } from './dto/create-batch-order-dto';
 import { CancelBatchOrderDto } from './dto/delete-order-dto';
+import { GetAllOpenOrderDto } from './dto/get-all-open-order.dto';
 
 @ApiTags('order')
 @Controller('order')
@@ -31,7 +32,7 @@ export class OrderController {
     @ActiveUser('id') userId: string,
     @Body() dto: CreateBatchOrderDto,
   ): Promise<any> {
-    return this.orderService.createBatch(userId, dto.exchange, dto.batchOrders);
+    return this.orderService.createBatch(userId, dto.exchange, dto.symbol, dto.batchOrders);
   }
 
   @ApiUnauthorizedResponse({ description: 'Unauthorized' })
@@ -49,5 +50,13 @@ export class OrderController {
   @Post('get')
   async findAll(@ActiveUser('id') userId: string): Promise<any> {
     return this.orderService.findAll(userId);
+  }
+
+  @ApiUnauthorizedResponse({ description: 'Unauthorized' })
+  @ApiOkResponse({ description: 'List of open order' })
+  @ApiBearerAuth()
+  @Post('all_open_orders')
+  async getAllOpenOrders(@Body() dto: GetAllOpenOrderDto): Promise<any> {
+    return await this.orderService.getAllOpenOrders(dto);
   }
 }

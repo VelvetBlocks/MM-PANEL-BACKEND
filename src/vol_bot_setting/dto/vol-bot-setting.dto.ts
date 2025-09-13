@@ -11,10 +11,13 @@ import {
   IsPositive,
   Min,
   Max,
+  IsEnum,
+  Matches,
 } from 'class-validator';
 import { Type } from 'class-transformer';
+import { TRADE_FLOW } from '../entities/vol-bot-setting.entity';
 
-class CredsDto {
+export class CredsDto {
   @ApiProperty({ description: 'API Key', example: 'your-api-key' })
   @IsString()
   @IsNotEmpty()
@@ -46,15 +49,29 @@ export class CreateVolumeBotSettingsDto {
   @IsNumber()
   refPriceManual?: number;
 
-  @ApiProperty({ description: 'Currency throttle', example: 'USDT' })
+  @ApiProperty({ description: 'Currency minus throttle (e.g., USDT)', example: '0.5' })
   @IsString()
-  @MaxLength(20)
-  currencyThrottle: string;
+  @IsOptional()
+  @Matches(/^\d+(\.\d+)?$/, { message: 'currencyThrottleMinus must be a valid decimal number' })
+  currencyThrottleMinus: string;
 
-  @ApiProperty({ description: 'Token throttle', example: 'BTC' })
+  @ApiProperty({ description: 'Currency plus throttle (e.g., USDT)', example: '1.25' })
   @IsString()
-  @MaxLength(20)
-  tokenThrottle: string;
+  @IsOptional()
+  @Matches(/^\d+(\.\d+)?$/, { message: 'currencyThrottlePlus must be a valid decimal number' })
+  currencyThrottlePlus: string;
+
+  @ApiProperty({ description: 'Token minus throttle (e.g., LF)', example: '10.0' })
+  @IsString()
+  @IsOptional()
+  @Matches(/^\d+(\.\d+)?$/, { message: 'tokenThrottleMinus must be a valid decimal number' })
+  tokenThrottleMinus: string;
+
+  @ApiProperty({ description: 'Token plus throttle (e.g., LF)', example: '20.0' })
+  @IsString()
+  @IsOptional()
+  @Matches(/^\d+(\.\d+)?$/, { message: 'tokenThrottlePlus must be a valid decimal number' })
+  tokenThrottlePlus: string;
 
   @ApiProperty({
     description: 'Minimum execution timing (in seconds)',
@@ -81,12 +98,15 @@ export class CreateVolumeBotSettingsDto {
   tradeAmountMax: number;
 
   @ApiProperty({
-    description: 'Trade flow type (buy/sell/mixed)',
-    example: 'mixed',
+    description: 'Exchange for coin',
+    enum: TRADE_FLOW,
+    example: TRADE_FLOW.Buy_Sell,
   })
-  @IsString()
-  @MaxLength(50)
-  tradeFlow: string;
+  @IsNotEmpty()
+  @IsEnum(TRADE_FLOW, {
+    message: `Type must be one of ${TRADE_FLOW.Sell_Buy}, ${TRADE_FLOW.Buy_Sell}`,
+  })
+  tradeFlow: TRADE_FLOW;
 
   @ApiProperty({ description: '24H volume limit', example: 1000 })
   @IsNumber()
@@ -121,6 +141,27 @@ export class UpdateVolumeBotSettingsDto {
   @IsNotEmpty()
   id: number;
 
+  @ApiProperty({ description: 'Price decimal for coin', example: 6 })
+  @IsInt()
+  @Min(0)
+  @Max(20)
+  @IsNotEmpty()
+  priceDecimal: number;
+
+  @ApiProperty({ description: 'Quantity decimal for coin', example: 2 })
+  @IsInt()
+  @Min(0)
+  @Max(20)
+  @IsNotEmpty()
+  quantityDecimal: number;
+
+  @ApiProperty({ description: 'Amount decimal for coin', example: 4 })
+  @IsInt()
+  @Min(0)
+  @Max(20)
+  @IsNotEmpty()
+  amountDecimal: number;
+
   @ApiProperty({
     description: 'Manual reference price',
     example: 100.25,
@@ -130,25 +171,29 @@ export class UpdateVolumeBotSettingsDto {
   @IsNumber()
   refPriceManual?: number;
 
-  @ApiProperty({
-    description: 'Currency throttle',
-    example: 'USDT',
-    required: false,
-  })
-  @IsOptional()
+  @ApiProperty({ description: 'Currency minus throttle (e.g., USDT)', example: '0.5' })
   @IsString()
-  @MaxLength(20)
-  currencyThrottle?: string;
+  @IsOptional()
+  @Matches(/^\d+(\.\d+)?$/, { message: 'currencyThrottleMinus must be a valid decimal number' })
+  currencyThrottleMinus: string;
 
-  @ApiProperty({
-    description: 'Token throttle',
-    example: 'BTC',
-    required: false,
-  })
-  @IsOptional()
+  @ApiProperty({ description: 'Currency plus throttle (e.g., USDT)', example: '1.25' })
   @IsString()
-  @MaxLength(20)
-  tokenThrottle?: string;
+  @IsOptional()
+  @Matches(/^\d+(\.\d+)?$/, { message: 'currencyThrottlePlus must be a valid decimal number' })
+  currencyThrottlePlus: string;
+
+  @ApiProperty({ description: 'Token minus throttle (e.g., LF)', example: '10.0' })
+  @IsString()
+  @IsOptional()
+  @Matches(/^\d+(\.\d+)?$/, { message: 'tokenThrottleMinus must be a valid decimal number' })
+  tokenThrottleMinus: string;
+
+  @ApiProperty({ description: 'Token plus throttle (e.g., LF)', example: '20.0' })
+  @IsString()
+  @IsOptional()
+  @Matches(/^\d+(\.\d+)?$/, { message: 'tokenThrottlePlus must be a valid decimal number' })
+  tokenThrottlePlus: string;
 
   @ApiProperty({
     description: 'Minimum execution timing (in seconds)',
@@ -187,14 +232,22 @@ export class UpdateVolumeBotSettingsDto {
   tradeAmountMax?: number;
 
   @ApiProperty({
-    description: 'Trade flow type (buy/sell/mixed)',
-    example: 'mixed',
-    required: false,
+    description: 'Exchange for coin',
+    enum: TRADE_FLOW,
+    example: TRADE_FLOW.Buy_Sell,
   })
   @IsOptional()
-  @IsString()
-  @MaxLength(50)
-  tradeFlow?: string;
+  @IsEnum(TRADE_FLOW, {
+    message: `Type must be one of ${TRADE_FLOW.Sell_Buy}, ${TRADE_FLOW.Buy_Sell}`,
+  })
+  tradeFlow: TRADE_FLOW;
+
+  @ApiProperty({ description: 'Trade parameter for vol bot', example: 0.4 })
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 }, { message: 'tradeParam must be a number' })
+  @Min(0)
+  @Max(1)
+  tradeParam: number;
 
   @ApiProperty({
     description: '24H volume limit',
@@ -251,16 +304,3 @@ export class UpdateVolumeBotSettingsDto {
   creds?: CredsDto;
 }
 
-export class BotStatusUpdateDto {
-  @ApiProperty({ description: 'VolumeBotSetting ID', example: 1 })
-  @IsInt()
-  @IsNotEmpty()
-  id: number;
-
-  @ApiProperty({ description: 'Status for vol bot', example: 1 })
-  @IsNotEmpty()
-  @IsInt()
-  @Min(0)
-  @Max(2)
-  status: number;
-}

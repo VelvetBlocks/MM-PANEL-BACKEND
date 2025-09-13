@@ -6,6 +6,8 @@ import { MexcBatchOrderResponse, MexcService } from 'src/mexc/mexc.service';
 import { Exchange } from 'src/coins/entities/coin.entity';
 import { CreateOrderDto } from './dto/create-order-dto';
 import { CancelBatchOrderDto } from './dto/delete-order-dto';
+import { VolumeBotSettingsService } from 'src/vol_bot_setting/vol-bot-setting.service';
+import { GetAllOpenOrderDto } from './dto/get-all-open-order.dto';
 
 @Injectable()
 export class OrderService {
@@ -13,15 +15,20 @@ export class OrderService {
     @InjectRepository(Order)
     private readonly orderRepository: Repository<Order>,
     private readonly mexcService: MexcService,
+    private readonly volumeBotSettingsService: VolumeBotSettingsService,
   ) {}
 
   // Create single order
   async create(userId: string, orderData: CreateOrderDto): Promise<Order> {
     try {
-      console.log('order ============== : ', orderData);
+      const bot = await this.volumeBotSettingsService.getByExchangeCoinName(
+        orderData.exchange,
+        orderData.symbol,
+      );
+
       switch (orderData.exchange) {
         case Exchange.MEXC:
-          const orderRes = await this.mexcService.createOrder({
+          const orderRes: any = await this.mexcService.createOrder(bot.creds, {
             symbol: orderData.symbol,
             side: orderData.side,
             type: orderData.type,
@@ -29,9 +36,13 @@ export class OrderService {
             price: orderData.price,
             // newClientOrderId: orderData.newClientOrderId,
           });
-          console.log('MEXC RES ----------- : ', orderRes);
 
-          const order = this.orderRepository.create({ ...orderData, userId });
+          const order = this.orderRepository.create({
+            ...orderData,
+            orderId: orderRes.orderId,
+            is_bot_order: 1,
+            userId,
+          });
           return await this.orderRepository.save(order);
           break;
 
@@ -46,12 +57,14 @@ export class OrderService {
   // Create multiple orders (batch)
   async createBatch(
     userId: string,
-    exchange: string,
+    exchange: Exchange,
+    symbol: string,
     orderList: Partial<Order>[],
   ): Promise<{ savedOrders: Order[]; failedOrders: any[] }> {
     try {
       let mexcResponse: MexcBatchOrderResponse[] = [];
-
+      const bot = await this.volumeBotSettingsService.getByExchangeCoinName(exchange, symbol);
+      console.log('bot -----------> ', bot);
       switch (exchange) {
         case Exchange.MEXC:
           const mexcOrders = orderList.map((o) => ({
@@ -66,7 +79,7 @@ export class OrderService {
           console.log('MEXC Orders body:', mexcOrders);
 
           // Call MEXC service
-          mexcResponse = await this.mexcService.createBatchOrders({
+          mexcResponse = await this.mexcService.createBatchOrders(bot.creds, {
             batchOrders: mexcOrders,
           });
           console.log('MEXC Response:', mexcResponse);
@@ -133,10 +146,15 @@ export class OrderService {
     return { deleted: true };
   }
   async cancelBatch(dto: CancelBatchOrderDto): Promise<{ cancelled: number; failed: any[] }> {
-    const { symbol, orderIds } = dto;
-
+    const { symbol, orderIds, exchange } = dto;
+    const bot = await this.volumeBotSettingsService.getByExchangeCoinName(exchange, symbol);
+    console.log('bot -----------> ', bot);
     // Cancel on MEXC
-    const mexcResponse = await this.mexcService.cancelAllCoinWiseOrders(symbol, orderIds);
+    const mexcResponse = await this.mexcService.cancelAllCoinWiseOrders(
+      bot.creds,
+      symbol,
+      orderIds,
+    );
     console.log('mexcResponse ---------------> ', mexcResponse);
 
     const cancelledOrders: string[] = [];
@@ -166,5 +184,21 @@ export class OrderService {
     });
     console.log('result ---------------> ', result);
     return { cancelled: result.affected ?? 0, failed: failedOrders };
+  }
+
+  // Get one order by id
+  async getAllOpenOrders(dto: GetAllOpenOrderDto): Promise<any> {
+    const bot = await this.volumeBotSettingsService.getByExchangeCoinName(dto.exchange, dto.symbol);
+    console.log('bot -----------> ', bot);
+    switch (dto.exchange) {
+      case Exchange.MEXC:
+        const openOrders = await this.mexcService.getAllOpenOrders(bot.creds, dto.symbol);
+        console.log('openOrders -----------> ', openOrders);
+        return openOrders;
+        break;
+
+      default:
+        throw new BadRequestException('Unsupported exchange');
+    }
   }
 }

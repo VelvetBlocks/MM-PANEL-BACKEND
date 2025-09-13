@@ -1,0 +1,326 @@
+import { Injectable, Logger } from '@nestjs/common';
+import { Cron } from '@nestjs/schedule';
+import { Repository } from 'typeorm';
+import { InjectRepository } from '@nestjs/typeorm';
+import { TRADE_FLOW, VolumeBotSettings } from './entities/vol-bot-setting.entity';
+import { OrderService } from 'src/order/order.service';
+import { ORDER_SIDE, ORDER_TYPE } from 'src/order/entities/order.entity';
+import { Exchange, Status } from 'src/coins/entities/coin.entity';
+import { MEXC_REQUIRED_MIN_BALANCE, MexcService } from 'src/mexc/mexc.service';
+import { CoinsService } from 'src/coins/coin.service';
+
+@Injectable()
+export class VolumeBotScheduler {
+  private readonly logger = new Logger(VolumeBotScheduler.name);
+
+  constructor(
+    @InjectRepository(VolumeBotSettings)
+    private botRepo: Repository<VolumeBotSettings>,
+    private readonly orderService: OrderService,
+    private readonly mexcService: MexcService,
+    private readonly coinService: CoinsService,
+  ) {}
+  // Track next execution time per bot in memory
+  private nextExecutionMap: Map<number, number> = new Map();
+
+  // Cron runs every 5 seconds, but bots run only when their countdown finishes
+  @Cron('*/15 * * * * *')
+  async checkBots() {
+    // fetch all bots with their coin relation (already eager loaded in entity)
+    // const activeBots = await this.botRepo.find({ where: { status: 1 } });
+    const allBots = await this.botRepo.find({
+      relations: ['coin'],
+    });
+
+    // filter only bots whose coin status is ON
+    const activeBots = allBots.filter((bot) => bot.coin.status === Status.ON);
+
+    for (const bot of activeBots) {
+      // fetch live balances
+      const balance: any = await this.mexcService.getBalances(bot.creds);
+      const balances = balance?.balances ?? [];
+
+      const liveUsdtRaw = balances.find((b: any) => b.asset === 'USDT')?.available ?? 0;
+      const liveCoinRaw = balances.find((b: any) => b.asset === bot.coin.name)?.available ?? 0;
+
+      // Normalize to numbers
+      const liveUsdt = parseFloat(liveUsdtRaw as any) || 0;
+      const liveCoin = parseFloat(liveCoinRaw as any) || 0;
+
+      // DB snapshot values (make sure these fields exist and are numeric)
+      const dbUsdt = parseFloat(String(bot.usdt_balance ?? 0)) || 0;
+      const dbCoin = parseFloat(String(bot.token_balance ?? 0)) || 0;
+
+      // Throttle values (fallback to 0)
+      const tokenMinus = parseFloat(String(bot.tokenThrottleMinus ?? 0)) || 0;
+      const tokenPlus = parseFloat(String(bot.tokenThrottlePlus ?? 0)) || 0;
+      const currencyMinus = parseFloat(String(bot.currencyThrottleMinus ?? 0)) || 0;
+      const currencyPlus = parseFloat(String(bot.currencyThrottlePlus ?? 0)) || 0;
+
+      // Compute bounds
+      const usdtLower = dbUsdt - currencyMinus;
+      const usdtUpper = dbUsdt + currencyPlus;
+      const coinLower = dbCoin - tokenMinus;
+      const coinUpper = dbCoin + tokenPlus;
+
+      // Log everything - this will show exactly why the check passes/fails
+      this.logger.debug(`BOT[${bot.id}] BALANCE CHECK:
+        DB USDT = ${dbUsdt}, live USDT = ${liveUsdt}
+        currencyThrottleMinus = ${tokenMinus}, currencyThrottlePlus = ${tokenPlus}
+        USDT bounds = [${usdtLower}, ${usdtUpper}]
+        inRange = ${liveUsdt >= usdtLower && liveUsdt <= usdtUpper}
+        DB COIN = ${dbCoin}, live COIN = ${liveCoin}
+        tokenThrottleMinus = ${currencyMinus}, tokenThrottlePlus = ${currencyPlus}
+        COIN bounds = [${coinLower}, ${coinUpper}]
+        inRange = ${liveCoin >= coinLower && liveCoin <= coinUpper}
+      `);
+
+      // final out-of-range flags
+      const isUsdtOutOfRange = liveUsdt < usdtLower || liveUsdt > usdtUpper;
+      const isCoinOutOfRange = liveCoin < coinLower || liveCoin > coinUpper;
+
+      if (isUsdtOutOfRange || isCoinOutOfRange) {
+        this.logger.warn(`Bot ${bot.id} stopped: balance drift detected.`);
+        await this.stopBot(bot.id, bot.coin.id);
+        return;
+      }
+
+      // 4. If validation passed, continue with normal execution flow
+      console.log('Balance validation passed, executing bot...');
+
+      // ========================================================================================================= //
+      const now = Date.now();
+      const nextExecution = this.nextExecutionMap.get(bot.id) || 0;
+
+      if (now >= nextExecution) {
+        await this.executeBot(bot);
+
+        // schedule next execution with new random delay
+        const delay = this.getRandomInt(bot.executionTimingMin, bot.executionTimingMax) * 1000;
+        this.nextExecutionMap.set(bot.id, now + delay);
+
+        this.logger.log(
+          `Bot of ${bot.coin.exchange} ${bot.coin.name} scheduled next execution in ${delay / 1000} seconds`,
+        );
+      }
+    }
+  }
+
+  private async executeBot(bot: VolumeBotSettings) {
+    try {
+      switch (bot.coin.exchange) {
+        case Exchange.MEXC:
+          const volume = await this.mexcService.fetch24hrVolumesSymbolWise(bot.creds, 'LFUSDT');
+          console.log(
+            'VOLUME -----------------------> ',
+            volume.volume >= bot.volumeLimit24H,
+            volume.quoteVolume,
+            bot.volumeLimit24H,
+          );
+          if (parseFloat(volume.quoteVolume) >= parseFloat(bot.volumeLimit24H)) {
+            this.logger.warn(`BOT ${bot.id} STOPPED: VOLUME TRIGGERED!`);
+            await this.stopBot(bot.id, bot.coin.id);
+            return;
+          }
+          // Fetch balances
+          const balance: any = await this.mexcService.getBalances(bot.creds);
+          const balances = balance?.balances ?? [];
+
+          // Find balances
+          const usdtBalance = balances.find((b: any) => b.asset === 'USDT');
+          const coinBalance = balances.find((b: any) => b.asset === bot.coin.name)?.available ?? 0;
+
+          if (
+            !usdtBalance ||
+            usdtBalance.available <= MEXC_REQUIRED_MIN_BALANCE ||
+            bot.tradeAmountMin > usdtBalance.available
+          ) {
+            console.log('No sufficient USDT balance found.');
+            return;
+          }
+          console.log('USDT Balance (available):', usdtBalance.available);
+          console.log('Coin Balance:', coinBalance);
+
+          // Fetch order book
+          const orderBook = await this.mexcService.fetchOrderBookSymbolWise(
+            bot.creds,
+            bot.coin.symbol,
+            1,
+          );
+          const buy = Number(orderBook.buy.price.toFixed(bot.priceDecimal));
+          const sell = Number(orderBook.sell.price.toFixed(bot.priceDecimal));
+          console.log(buy, '<---B S--->', sell);
+
+          // Tick size
+          const tickSize = 1 / Math.pow(10, bot.priceDecimal);
+          const diff = Number(Math.abs(sell - buy).toFixed(bot.priceDecimal));
+          const isOneTickDiff = diff === tickSize;
+
+          if (isOneTickDiff) {
+            console.log('NOT ORDER PLACE DUE TO PRICE HAS JUST 1 POINT DIFFERENCE');
+            return;
+          }
+
+          // Spread & price calculations
+          const spread = +(sell - buy).toFixed(bot.priceDecimal);
+          console.log('spread ------> ', spread);
+          const multiplyPrice = +(spread * bot.tradeParam); // DON'T APPLY HERE TO FIX WE NEED HERE ALL POINTS
+          console.log('multiplyPrice ------> ', multiplyPrice);
+
+          // Random trade amount
+          const amount = this.getRandomFloat(
+            parseFloat(bot.tradeAmountMin),
+            parseFloat(bot.tradeAmountMax),
+          );
+          // console.log('amount ------> ', amount);
+
+          // Build order flow
+          let order: any[] = [];
+          const createOrderPair = (
+            side1: ORDER_SIDE,
+            side2: ORDER_SIDE,
+            tokenQuantity: number,
+            price: number,
+          ) => [
+            {
+              symbol: bot.coin.symbol!,
+              side: side1,
+              type: ORDER_TYPE.Limit!,
+              quantity: tokenQuantity,
+              price: price.toFixed(bot.priceDecimal),
+            },
+            {
+              symbol: bot.coin.symbol!,
+              side: side2,
+              type: ORDER_TYPE.Limit!,
+              quantity: tokenQuantity,
+              price: price.toFixed(bot.priceDecimal),
+            },
+          ];
+
+          switch (bot.tradeFlow) {
+            case TRADE_FLOW.Buy_Sell:
+              console.log('buy ------> ', buy);
+              let priceBuySell = +(buy + multiplyPrice).toFixed(bot.priceDecimal);
+              console.log('priceBuySell ------> ', priceBuySell);
+
+              if (priceBuySell === buy) {
+                priceBuySell = priceBuySell + 0.000001;
+              }
+              console.log('SAME Buy_Sell PRICE ------> ', priceBuySell.toFixed(bot.priceDecimal));
+
+              // Token quantity
+              const tokenQuantityBuySell = (
+                Number(amount.toFixed(bot.amountDecimal)) / Number(priceBuySell)
+              ).toFixed(bot.quantityDecimal);
+
+              if (Number(tokenQuantityBuySell) > Number(coinBalance)) {
+                console.log('NOT ENOUGH COIN BALANCE TO PLACE ORDER');
+                return;
+              }
+
+              order = createOrderPair(
+                ORDER_SIDE.Buy,
+                ORDER_SIDE.Sell,
+                Number(tokenQuantityBuySell),
+                priceBuySell,
+              );
+              break;
+            case TRADE_FLOW.Sell_Buy:
+              console.log('sell ------> ', sell);
+              let priceSellBuy = +(sell + multiplyPrice).toFixed(bot.priceDecimal);
+              console.log('priceSellBuy ------> ', priceSellBuy);
+
+              if (priceSellBuy === sell) {
+                console.log('SAME Sell_Buy PRICE ------> ', priceSellBuy.toFixed(bot.priceDecimal));
+                priceSellBuy = priceSellBuy - 0.000001;
+              }
+
+              // Token quantity
+              const tokenQuantitySellBuy = (
+                Number(amount.toFixed(bot.amountDecimal)) / Number(priceSellBuy)
+              ).toFixed(bot.quantityDecimal);
+              if (Number(tokenQuantitySellBuy) > Number(coinBalance)) {
+                console.log('NOT ENOUGH COIN BALANCE TO PLACE ORDER');
+                return;
+              }
+
+              order = createOrderPair(
+                ORDER_SIDE.Sell,
+                ORDER_SIDE.Buy,
+                Number(tokenQuantitySellBuy),
+                priceSellBuy,
+              );
+              break;
+            case TRADE_FLOW.Mixed:
+              const firstSide = Math.random() < 0.5 ? ORDER_SIDE.Buy : ORDER_SIDE.Sell;
+              const secondSide = firstSide === ORDER_SIDE.Buy ? ORDER_SIDE.Sell : ORDER_SIDE.Buy;
+              let price;
+              if (firstSide === ORDER_SIDE.Buy) {
+                price = +(buy + multiplyPrice).toFixed(bot.priceDecimal);
+                if (price === buy) {
+                  console.log('SAME Buy_Sell PRICE ------> ', price.toFixed(bot.priceDecimal));
+                  price = price + 0.000001;
+                }
+              } else if (firstSide === ORDER_SIDE.Sell) {
+                price = +(sell + multiplyPrice).toFixed(bot.priceDecimal);
+                if (price === sell) {
+                  console.log('SAME Sell_Buy PRICE ------> ', price.toFixed(bot.priceDecimal));
+                  price = price - 0.000001;
+                }
+              }
+              console.log('price ------> ', price.toFixed(bot.priceDecimal));
+              const tokenQuantity = (
+                Number(amount.toFixed(bot.amountDecimal)) / Number(price.toFixed(bot.priceDecimal))
+              ).toFixed(bot.quantityDecimal);
+
+              order = createOrderPair(firstSide, secondSide, Number(tokenQuantity), price);
+              break;
+          }
+
+          console.log('ORDER ---------------- :', order);
+
+          // Execute batch order
+          const orders = await this.orderService.createBatch(
+            null,
+            bot.coin.exchange,
+            bot.coin.symbol,
+            order,
+          );
+          console.log('orders ---------------- :', orders);
+
+          // Extract orderIds
+          const orderIds = orders.savedOrders.map((o) => o.orderId);
+          console.log('cancel order id ------------ : ', orderIds);
+
+          // Cancel all those orders
+          await this.mexcService.cancelAllCoinWiseOrders(bot.creds, bot.coin.symbol, orderIds);
+
+          this.logger.log(
+            `Bot ${bot.id} executed ${bot.tradeFlow} order of ${amount} ${bot.coin.symbol}`,
+          );
+
+          break;
+
+        default:
+          break;
+      }
+    } catch (err) {
+      this.logger.error(`Bot ${bot.id} execution failed: ${err.message}`);
+    }
+  }
+
+  private async stopBot(botId: number, id: number) {
+    await this.coinService.statusUpdate({ id, status: Status.OFF });
+    this.nextExecutionMap.delete(botId); // stop scheduling further
+    this.logger.log(`Bot ${botId} has been turned OFF due to balance thresholds.`);
+  }
+
+  private getRandomInt(min: number, max: number): number {
+    return Math.floor(Math.random() * (max - min + 1)) + min;
+  }
+
+  private getRandomFloat(min: number, max: number): number {
+    return Math.random() * (max - min) + min;
+  }
+}

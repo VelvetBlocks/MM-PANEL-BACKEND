@@ -7,6 +7,7 @@ import https from 'https';
 import qs from 'qs';
 import Bottleneck from 'bottleneck';
 import { CreateBatchOrderMexcDto } from './dto/create-batch-order-dto';
+import { CredsDto } from 'src/vol_bot_setting/dto/vol-bot-setting.dto';
 
 export type MexcBatchOrderResponse = {
   code?: number;
@@ -14,12 +15,13 @@ export type MexcBatchOrderResponse = {
   clientOrderId?: string;
   msg?: string;
 };
+export const MEXC_REQUIRED_MIN_BALANCE = 1;
 
 @Injectable()
 export class MexcService {
   private readonly baseUrl = 'https://api.mexc.com';
-  private readonly API_KEY = process.env.MEXC_API_KEY!;
-  private readonly API_SECRET = process.env.MEXC_API_SECRET!;
+  // private readonly API_KEY = process.env.MEXC_API_KEY!;
+  // private readonly API_SECRET = process.env.MEXC_API_SECRET!;
 
   // Rate limiter: 20 requests per second max
   private readonly limiter = new Bottleneck({
@@ -35,11 +37,12 @@ export class MexcService {
   private async request<T>(
     method: 'GET' | 'POST' | 'DELETE',
     url: string,
+    apiKey: string,
     body?: any,
     retries = 3,
   ): Promise<T> {
     const headers: Record<string, string> = {
-      'X-MEXC-APIKEY': this.API_KEY,
+      'X-MEXC-APIKEY': apiKey,
     };
 
     if (method === 'POST') {
@@ -73,11 +76,11 @@ export class MexcService {
             maxRedirects: 0,
             validateStatus: (status) => true,
           });
-          console.log('Full Axios response:', {
-            status: res.status,
-            headers: res.headers,
-            data: res.data,
-          });
+          // console.log('Full Axios response:', {
+          //   status: res.status,
+          //   headers: res.headers,
+          //   data: res.data,
+          // });
 
           return res.data;
         });
@@ -101,9 +104,8 @@ export class MexcService {
   /** -------------------------
    * Create order
    * ------------------------- */
-  async createOrder(orderDto: CreateOrderMexcDto, test = true) {
+  async createOrder(botCred: CredsDto, orderDto: CreateOrderMexcDto, test = false) {
     const endpoint = test ? '/api/v3/order/test' : '/api/v3/order';
-    console.log('endpoint ==============> ', endpoint);
     const params: Record<string, any> = {
       symbol: orderDto.symbol,
       side: orderDto.side,
@@ -129,7 +131,7 @@ export class MexcService {
     // Use qs.stringify to ensure consistent parameter sorting for the signature
     const queryString = qs.stringify(params);
     const signature = crypto
-      .createHmac('sha256', this.API_SECRET)
+      .createHmac('sha256', botCred.secretKey)
       .update(queryString)
       .digest('hex');
 
@@ -138,13 +140,14 @@ export class MexcService {
     console.log('Generated URL:', url); // Log the full URL for debugging
 
     // The POST request is made with the parameters in the URL, and an empty body.
-    return this.request('POST', url);
+    return this.request('POST', url, botCred.apiKey);
   }
 
   /** -------------------------
    * Create batch orders
    * ------------------------- */
   async createBatchOrders(
+    botCred: CredsDto,
     batchDto: CreateBatchOrderMexcDto,
     test = false,
   ): Promise<MexcBatchOrderResponse[]> {
@@ -181,39 +184,39 @@ export class MexcService {
       .join('&');
 
     const signature = crypto
-      .createHmac('sha256', this.API_SECRET)
+      .createHmac('sha256', botCred.secretKey)
       .update(queryString)
       .digest('hex');
 
     const url = `${this.baseUrl}${endpoint}?${queryString}&signature=${signature}`;
 
     // ✅ Correctly typed response
-    return this.request<MexcBatchOrderResponse[]>('POST', url);
+    return this.request<MexcBatchOrderResponse[]>('POST', url, botCred.apiKey);
   }
 
   /** -------------------------
    * Get account balances
    * ------------------------- */
-  async getBalances(userId: string) {
-    await this.usersService.getMe(userId);
+  async getBalances(botCred: CredsDto) {
+    // await this.usersService.getMe(userId);
 
     const params: Record<string, any> = { timestamp: Date.now() };
     const queryString = new URLSearchParams(params).toString();
     const signature = crypto
-      .createHmac('sha256', this.API_SECRET)
+      .createHmac('sha256', botCred.secretKey)
       .update(queryString)
       .digest('hex');
 
     const url = `${this.baseUrl}/api/v3/account?${queryString}&signature=${signature}`;
 
-    return this.request('GET', url);
+    return await this.request('GET', url, botCred.apiKey);
   }
 
   /** -------------------------
    * Cancel single order
    * ------------------------- */
   async cancelOrder(
-    userId: string,
+    botCred: CredsDto,
     symbol: string,
     opts: { orderId?: string; origClientOrderId?: string },
   ) {
@@ -238,7 +241,7 @@ export class MexcService {
 
     const queryString = qs.stringify(params);
     const signature = crypto
-      .createHmac('sha256', this.API_SECRET)
+      .createHmac('sha256', botCred.secretKey)
       .update(queryString)
       .digest('hex');
 
@@ -246,13 +249,13 @@ export class MexcService {
 
     console.log('Cancel Order URL:', url);
 
-    return this.request('DELETE', url);
+    return this.request('DELETE', url, botCred.apiKey);
   }
 
   /** -------------------------
    * Cancel all open orders for a symbol
    * ------------------------- */
-  async cancelAllCoinWiseOrders(symbol: string, orderIds: string[]) {
+  async cancelAllCoinWiseOrders(botCred: CredsDto, symbol: string, orderIds: string[]) {
     const params: Record<string, any> = {
       symbol,
       orderIds: JSON.stringify(orderIds),
@@ -262,7 +265,7 @@ export class MexcService {
 
     const queryString = qs.stringify(params);
     const signature = crypto
-      .createHmac('sha256', this.API_SECRET)
+      .createHmac('sha256', botCred.secretKey)
       .update(queryString)
       .digest('hex');
 
@@ -270,6 +273,78 @@ export class MexcService {
 
     console.log('Cancel All Orders URL ---> :', url);
 
-    return this.request('DELETE', url);
+    return this.request('DELETE', url, botCred.apiKey);
+  }
+
+  /** -------------------------
+   * Get Order Book level wise
+   * ------------------------- */
+  async fetchOrderBookSymbolWise(botCred: CredsDto, symbol: string, limit: number) {
+    try {
+      const url = `https://api.mexc.com/api/v3/depth?symbol=${symbol}&limit=${limit}`;
+      // Fetch raw response
+      const orderBook = await this.request<any>('GET', url, botCred.apiKey);
+      // Extract bids (highest buy orders) and asks (lowest sell orders)
+      const bids =
+        orderBook.bids?.map(([price, qty]) => ({
+          price: parseFloat(price),
+          quantity: parseFloat(qty),
+        })) ?? [];
+
+      const asks =
+        orderBook.asks?.map(([price, qty]) => ({
+          price: parseFloat(price),
+          quantity: parseFloat(qty),
+        })) ?? [];
+
+      // Pick top of book
+      const buy = bids[0] || null; // last buy
+      const sell = asks[0] || null; // last sell
+      return {
+        lastUpdateId: orderBook.lastUpdateId,
+        buy,
+        sell,
+      };
+    } catch (err: any) {
+      console.error(`Failed to fetch order book for ${symbol}: ${err.message}`);
+      throw err;
+    }
+  }
+
+  /** -------------------------
+   * Get Volume 24 HR (symbol-wise)
+   * ------------------------- */
+  async fetch24hrVolumesSymbolWise(botCred: CredsDto, symbol: string) {
+    try {
+      const url = `https://api.mexc.com/api/v3/ticker/24hr?symbol=${symbol}`;
+      const volumeData = await this.request<any>('GET', url, botCred.apiKey);
+      return {
+        symbol: volumeData.symbol,
+        volume: volumeData.volume,
+        quoteVolume: volumeData.quoteVolume,
+      };
+    } catch (err: any) {
+      console.error(`Failed to fetch 24h volume for ${symbol}: ${err.message}`);
+      throw err;
+    }
+  }
+
+  /** -------------------------
+   * Get all open orders for a symbol
+   * ------------------------- */
+  async getAllOpenOrders(botCred: CredsDto, symbol: string) {
+    const params: Record<string, any> = {
+      symbol,
+      timestamp: Date.now(),
+    };
+
+    const queryString = qs.stringify(params);
+    const signature = crypto
+      .createHmac('sha256', botCred.secretKey)
+      .update(queryString)
+      .digest('hex');
+
+    const url = `${this.baseUrl}/api/v3/openOrders?${queryString}&signature=${signature}`;
+    return this.request('GET', url, botCred.apiKey);
   }
 }

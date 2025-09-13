@@ -1,5 +1,12 @@
 import { ApiProperty, OmitType } from '@nestjs/swagger';
-import { IsNotEmpty, ValidateNested, ArrayMinSize, ArrayMaxSize, IsEnum } from 'class-validator';
+import {
+  IsNotEmpty,
+  ValidateNested,
+  ArrayMinSize,
+  ArrayMaxSize,
+  IsEnum,
+  IsString,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 import { CreateOrderDto } from './create-order-dto';
 import { Exchange } from 'src/coins/entities/coin.entity';
@@ -14,6 +21,14 @@ export class CreateBatchOrderDto {
   })
   @IsEnum(Exchange, { message: 'Exchange must be one of MEXC, HTX, BINANCE' })
   exchange: Exchange;
+
+  @ApiProperty({
+    description: 'Trading pair symbol',
+    example: 'LFUSDT',
+  })
+  @IsString()
+  @IsNotEmpty()
+  readonly symbol: string;
 
   @ApiProperty({
     type: [BatchOrderItemDto],

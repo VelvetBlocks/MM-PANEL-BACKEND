@@ -1,4 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
 import {
   IsNotEmpty,
   IsString,
@@ -7,6 +8,8 @@ import {
   IsOptional,
   MaxLength,
   IsEnum,
+  IsInt,
+  IsIn,
 } from 'class-validator';
 import { Exchange } from 'src/coins/entities/coin.entity';
 import { ORDER_SIDE, ORDER_TYPE } from 'src/order/entities/order.entity';
@@ -68,6 +71,11 @@ export class CreateOrderDto {
   @IsString()
   @IsNotEmpty()
   readonly price?: string;
+
+  @ApiProperty({ description: 'No cancel order', example: 0, enum: [0, 1] })
+  @IsInt({ message: 'no_cancel must be an integer' })
+  @IsIn([0, 1], { message: 'no_cancel must be 0 or 1' })
+  no_cancel: number;
 
   @ApiProperty({
     description: 'Optional client order ID (max 64 chars)',

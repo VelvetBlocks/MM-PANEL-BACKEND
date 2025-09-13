@@ -50,11 +50,17 @@ export class CreateCoinDto {
   @Max(20)
   priceDecimal: number;
 
-  @ApiProperty({ description: 'Quantity decimal for coin', example: 8 })
+  @ApiProperty({ description: 'Quantity decimal for coin', example: 2 })
   @IsInt()
   @Min(0)
   @Max(20)
   quantityDecimal: number;
+
+  @ApiProperty({ description: 'Amount decimal for coin', example: 4 })
+  @IsInt()
+  @Min(0)
+  @Max(20)
+  amountDecimal: number;
 
   @ApiProperty({
     description: 'Status of coin',
@@ -98,18 +104,19 @@ export class UpdateCoinDto {
   @IsString()
   @IsOptional()
   icon?: string;
+}
 
-  @ApiProperty({ description: 'Price decimal for coin', example: 8 })
-  @IsInt()
-  @Min(0)
-  @Max(20)
-  priceDecimal: number;
+export class FindExcCoinsDto {
+  @ApiProperty({ enum: Exchange })
+  @IsEnum(Exchange, { message: 'Exchange must be one of MEXC, HTX, BINANCE' })
+  exchange: Exchange;
+}
 
-  @ApiProperty({ description: 'Quantity decimal for coin', example: 8 })
+export class BotStatusUpdateDto {
+  @ApiProperty({ description: 'VolumeBotSetting ID', example: 1 })
   @IsInt()
-  @Min(0)
-  @Max(20)
-  quantityDecimal: number;
+  @IsNotEmpty()
+  id: number;
 
   @ApiProperty({
     description: 'Status of coin',
@@ -117,12 +124,6 @@ export class UpdateCoinDto {
     example: Status.ON,
   })
   @IsEnum(Status)
-  @IsOptional()
+  @IsNotEmpty()
   status?: Status;
-}
-
-export class FindExcCoinsDto {
-  @ApiProperty({ enum: Exchange })
-  @IsEnum(Exchange, { message: 'Exchange must be one of MEXC, HTX, BINANCE' })
-  exchange: Exchange;
 }

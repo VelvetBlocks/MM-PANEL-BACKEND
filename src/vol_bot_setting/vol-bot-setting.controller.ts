@@ -2,7 +2,9 @@ import { Controller, Post, Body } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiTags, ApiUnauthorizedResponse } from '@nestjs/swagger';
 import { VolumeBotSettingsService } from './vol-bot-setting.service';
 import { VolumeBotSettings } from './entities/vol-bot-setting.entity';
-import { BotStatusUpdateDto, UpdateVolumeBotSettingsDto } from './dto/vol-bot-setting.dto';
+import { UpdateVolumeBotSettingsDto } from './dto/vol-bot-setting.dto';
+import { ActiveUser } from 'src/common/decorators/active-user.decorator';
+import { User } from 'src/users/entities/user.entity';
 
 @ApiTags('vol-bot-setting')
 @Controller('vol-bot-setting')
@@ -16,8 +18,8 @@ export class VolBotSettingsController {
   })
   @ApiBearerAuth()
   @Post('update')
-  update(@Body() dto: UpdateVolumeBotSettingsDto) {
-    return this.volumeBotSettingsService.update(dto.id, dto);
+  update(@ActiveUser('id') userId: string, @Body() dto: UpdateVolumeBotSettingsDto) {
+    return this.volumeBotSettingsService.update(userId, dto.id, dto);
   }
 
   @ApiUnauthorizedResponse({ description: 'Unauthorized' })
@@ -26,9 +28,9 @@ export class VolBotSettingsController {
     type: VolumeBotSettings,
   })
   @ApiBearerAuth()
-  @Post('status')
-  statusUpdate(@Body() dto: BotStatusUpdateDto) {
-    return this.volumeBotSettingsService.statusUpdate(dto.id, dto);
+  @Post('reset')
+  reset(@Body('id') id: number) {
+    return this.volumeBotSettingsService.resetBalances(id);
   }
 
   @ApiUnauthorizedResponse({ description: 'Unauthorized' })

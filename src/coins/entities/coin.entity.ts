@@ -1,5 +1,13 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn, Unique } from 'typeorm';
+import { VolumeBotSettings } from 'src/vol_bot_setting/entities/vol-bot-setting.entity';
+import {
+  Column,
+  CreateDateColumn,
+  Entity,
+  OneToMany,
+  PrimaryGeneratedColumn,
+  Unique,
+} from 'typeorm';
 
 export enum Exchange {
   MEXC = 'MEXC',
@@ -29,7 +37,8 @@ export class Coins {
   })
   @Column({ type: 'enum', enum: Exchange })
   exchange: Exchange;
-  // priceDecimal / quentityDecimal / name / icon
+
+  // priceDecimal / quantityDecimal / name / icon
   @ApiProperty({ description: 'Trading pair symbol', example: 'LFUSDT' })
   @Column({ type: 'varchar', length: 20 })
   symbol: string;
@@ -42,19 +51,18 @@ export class Coins {
   @Column({ type: 'text', default: null })
   icon: string;
 
-  @ApiProperty({ description: 'Price decimal for coin', example: 8 })
-  @Column({ type: 'smallint', default: 12 })
-  priceDecimal: number;
-
-  @ApiProperty({ description: 'Quantity decimal for coin', example: 8 })
-  @Column({ type: 'smallint', default: 12 })
-  quantityDecimal: number;
-
   @ApiProperty({ description: 'Coins status', enum: Status })
-  @Column({ type: 'enum', enum: Status, default: Status.ON })
+  @Column({ type: 'enum', enum: Status, default: Status.OFF })
   status: Status;
 
   @ApiProperty({ description: 'Created date in DB' })
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
+
+  /** ✅ Use a lazy function, no direct import */
+  @OneToMany(
+    () => require('../../vol_bot_setting/entities/vol-bot-setting.entity').VolumeBotSettings,
+    (setting: VolumeBotSettings) => setting.coin,
+  )
+  volBotSettings: VolumeBotSettings[];
 }

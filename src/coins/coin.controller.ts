@@ -1,7 +1,12 @@
 import { Controller, Post, Body } from '@nestjs/common';
 import { CoinsService } from './coin.service';
 import { Coins, Exchange } from './entities/coin.entity';
-import { CreateCoinDto, FindExcCoinsDto, UpdateCoinDto } from './dto/create-coin.dto';
+import {
+  BotStatusUpdateDto,
+  CreateCoinDto,
+  FindExcCoinsDto,
+  UpdateCoinDto,
+} from './dto/create-coin.dto';
 import { ApiBearerAuth, ApiOkResponse, ApiTags, ApiUnauthorizedResponse } from '@nestjs/swagger';
 
 @ApiTags('coins')
@@ -31,6 +36,17 @@ export class CoinsController {
   @Post('get_exc')
   findExcCoins(@Body() dto: FindExcCoinsDto) {
     return this.coinsService.findExcCoins(dto.exchange);
+  }
+
+  @ApiUnauthorizedResponse({ description: 'Unauthorized' })
+  @ApiOkResponse({
+    description: 'Volume bot setting get successfully',
+    type: Coins,
+  })
+  @ApiBearerAuth()
+  @Post('status')
+  statusUpdate(@Body() dto: BotStatusUpdateDto) {
+    return this.coinsService.statusUpdate(dto);
   }
 
   @ApiUnauthorizedResponse({ description: 'Unauthorized' })

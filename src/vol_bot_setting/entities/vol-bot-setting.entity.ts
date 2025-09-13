@@ -1,13 +1,20 @@
 import { ApiProperty } from '@nestjs/swagger';
+import { Exclude } from 'class-transformer';
 import { Coins } from 'src/coins/entities/coin.entity';
 import {
   Column,
   CreateDateColumn,
   Entity,
   JoinColumn,
-  ManyToOne,
+  OneToOne,
   PrimaryGeneratedColumn,
 } from 'typeorm';
+
+export enum TRADE_FLOW {
+  Buy_Sell = 'BUY_SELL',
+  Sell_Buy = 'SELL_BUY',
+  Mixed = 'MIXED',
+}
 
 @Entity({ name: 'volume_bot_settings' })
 export class VolumeBotSettings {
@@ -15,22 +22,53 @@ export class VolumeBotSettings {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @ApiProperty({ description: 'Coin for this bot' })
-  @ManyToOne(() => Coins, { eager: true })
+  @OneToOne(() => Coins, (coin) => coin.volBotSettings, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'coin_id' })
   coin: Coins;
+
+  @ApiProperty({
+    description: 'Available Token balance (some APIs duplicate free, but keep separate)',
+  })
+  @Column('decimal', { precision: 30, scale: 15, default: 0 })
+  token_balance: number;
+
+  @ApiProperty({
+    description: 'Available USDT balance (some APIs duplicate free, but keep separate)',
+  })
+  @Column('decimal', { precision: 30, scale: 15, default: 0 })
+  usdt_balance: number;
+
+  @ApiProperty({ description: 'Price decimal for coin', example: 8 })
+  @Column({ type: 'smallint' })
+  priceDecimal: number;
+
+  @ApiProperty({ description: 'Quantity decimal for coin', example: 8 })
+  @Column({ type: 'smallint' })
+  quantityDecimal: number;
+
+  @ApiProperty({ description: 'Amount decimal for coin', example: 8 })
+  @Column({ type: 'smallint' })
+  amountDecimal: number;
+
+  @ApiProperty({ description: 'Currency minus throttle (e.g., USDT)', example: '0.5' })
+  @Column({ type: 'decimal', precision: 30, scale: 8, default: 0 })
+  currencyThrottleMinus: string;
+
+  @ApiProperty({ description: 'Currency plus throttle (e.g., USDT)', example: '1.25' })
+  @Column({ type: 'decimal', precision: 30, scale: 8, default: 0 })
+  currencyThrottlePlus: string;
+
+  @ApiProperty({ description: 'Token minus throttle (e.g., LF)', example: '10.0' })
+  @Column({ type: 'decimal', precision: 30, scale: 8, default: 0 })
+  tokenThrottleMinus: string;
+
+  @ApiProperty({ description: 'Token plus throttle (e.g., LF)', example: '20.0' })
+  @Column({ type: 'decimal', precision: 30, scale: 8, default: 0 })
+  tokenThrottlePlus: string;
 
   @ApiProperty({ description: 'Manual reference price', example: 100.25 })
   @Column({ type: 'decimal', precision: 18, scale: 8, nullable: true })
   refPriceManual: string | null;
-
-  @ApiProperty({ description: 'Currency throttle (e.g., USDT)' })
-  @Column({ type: 'varchar', length: 20, default: '' })
-  currencyThrottle: string;
-
-  @ApiProperty({ description: 'Token throttle (e.g., BTC)' })
-  @Column({ type: 'varchar', length: 20, default: '' })
-  tokenThrottle: string;
 
   @ApiProperty({ description: 'Minimum execution timing (in seconds)' })
   @Column({ type: 'int', default: 0 })
@@ -48,9 +86,16 @@ export class VolumeBotSettings {
   @Column({ type: 'decimal', precision: 18, scale: 8, default: '0' })
   tradeAmountMax: string;
 
-  @ApiProperty({ description: 'Trade flow type (buy/sell/mixed)' })
-  @Column({ type: 'varchar', length: 50, default: '' })
-  tradeFlow: string;
+  @ApiProperty({
+    description: 'Tread flow type (BUY_SELL, SELL_BUY or MIXED)',
+    enum: TRADE_FLOW,
+  })
+  @Column({ type: 'enum', enum: TRADE_FLOW, default: TRADE_FLOW.Mixed })
+  tradeFlow: TRADE_FLOW;
+
+  @ApiProperty({ description: 'Trade param for buy sell calculation' })
+  @Column({ type: 'float', default: 0.0 })
+  tradeParam: number;
 
   @ApiProperty({ description: '24H volume limit' })
   @Column({ type: 'decimal', precision: 18, scale: 8, default: '0' })
@@ -80,6 +125,7 @@ export class VolumeBotSettings {
     type: 'json',
     nullable: true,
   })
+  @Exclude()
   creds: {
     apiKey: string;
     secretKey: string;
@@ -89,4 +135,11 @@ export class VolumeBotSettings {
   @ApiProperty({ description: 'Created date in DB' })
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
+
+  token_balance_locked?: number;
+  usdt_balance_locked?: number;
+  token_balance_free?: number;
+  usdt_balance_free?: number;
+  change_token_balance?: number;
+  change_usdt_balance?: number;
 }

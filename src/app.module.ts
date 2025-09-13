@@ -19,6 +19,8 @@ import { IpGuard } from './common/guards/ip.guard';
 import { OrderModule } from './order/order.module';
 import { CoinsModule } from './coins/coin.module';
 import { VolumeBotSettingsModule } from './vol_bot_setting/vol-bot-setting.module';
+import { ScheduleModule } from '@nestjs/schedule';
+import { BalanceModule } from './balance/balances.module';
 
 @Module({
   imports: [
@@ -27,6 +29,7 @@ import { VolumeBotSettingsModule } from './vol_bot_setting/vol-bot-setting.modul
       load: [appConfig, jwtConfig, databaseConfig, redisConfig, swaggerConfig],
       validate,
     }),
+    ScheduleModule.forRoot(),
     DatabaseModule,
     RedisModule,
     AuthModule,
@@ -35,6 +38,7 @@ import { VolumeBotSettingsModule } from './vol_bot_setting/vol-bot-setting.modul
     CoinsModule,
     VolumeBotSettingsModule,
     OrderModule,
+    BalanceModule,
   ],
   controllers: [AppController],
   providers: [
@@ -43,10 +47,10 @@ import { VolumeBotSettingsModule } from './vol_bot_setting/vol-bot-setting.modul
       provide: APP_GUARD,
       useClass: JwtAuthGuard,
     },
-    {
-      provide: APP_GUARD,
-      useClass: IpGuard,
-    },
+    // {
+    //   provide: APP_GUARD,
+    //   useClass: IpGuard,
+    // },
   ],
 })
 export class AppModule {}

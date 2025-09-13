@@ -19,9 +19,9 @@ export class MexcController {
     @ActiveUser('id') userId: string,
     @Body() createOrder: CreateOrderMexcDto,
   ): Promise<any> {
-    const res = await this.mexcService.createOrder(createOrder);
-    console.log('res -------------> ', res);
-    return res;
+    // const res = await this.mexcService.createOrder(createOrder);
+    // console.log('res -------------> ', res);
+    // return res;
   }
 
   @ApiUnauthorizedResponse({ description: 'Unauthorized' })
@@ -32,12 +32,12 @@ export class MexcController {
     @ActiveUser('id') userId: string,
     @Body() createBatchOrder: CreateBatchOrderMexcDto,
   ): Promise<any> {
-    const res = await this.mexcService.createBatchOrders(
-      // userId,
-      createBatchOrder,
-    );
-    console.log('res -------------> ', res);
-    return res;
+    // const res = await this.mexcService.createBatchOrders(
+    //   // userId,
+    //   createBatchOrder,
+    // );
+    // console.log('res -------------> ', res);
+    // return res;
   }
 
   @ApiUnauthorizedResponse({ description: 'Unauthorized' })
@@ -45,7 +45,7 @@ export class MexcController {
   @ApiBearerAuth()
   @Post('get_balance')
   async getBalance(@ActiveUser('id') userId: string): Promise<any> {
-    return await this.mexcService.getBalances(userId);
+    // return await this.mexcService.getBalances();
   }
 
   @ApiUnauthorizedResponse({ description: 'Unauthorized' })
@@ -56,16 +56,16 @@ export class MexcController {
     @ActiveUser('id') userId: string,
     @Body() deleteOrderDto: DeleteOrderDto,
   ): Promise<any> {
-    if (deleteOrderDto.orderId || deleteOrderDto.origClientOrderId) {
-      return this.mexcService.cancelOrder(userId, deleteOrderDto.symbol, {
-        orderId: deleteOrderDto.orderId,
-        origClientOrderId: deleteOrderDto.origClientOrderId,
-      });
-    } else {
-      // Cancel all orders for the symbol
-      return this.mexcService.cancelAllCoinWiseOrders(deleteOrderDto.symbol, [
-        deleteOrderDto.orderId,
-      ]);
-    }
+    // if (deleteOrderDto.orderId || deleteOrderDto.origClientOrderId) {
+    //   return this.mexcService.cancelOrder(userId, deleteOrderDto.symbol, {
+    //     orderId: deleteOrderDto.orderId,
+    //     origClientOrderId: deleteOrderDto.origClientOrderId,
+    //   });
+    // } else {
+    //   // Cancel all orders for the symbol
+    //   return this.mexcService.cancelAllCoinWiseOrders(deleteOrderDto.symbol, [
+    //     deleteOrderDto.orderId,
+    //   ]);
+    // }
   }
 }

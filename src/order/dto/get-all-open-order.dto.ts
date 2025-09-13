@@ -2,12 +2,13 @@ import { ApiProperty } from '@nestjs/swagger';
 import { IsArray, IsEnum, IsInt, IsNotEmpty, IsString } from 'class-validator';
 import { Exchange } from 'src/coins/entities/coin.entity';
 
-export class CancelBatchOrderDto {
+export class GetAllOpenOrderDto {
   @ApiProperty({
     description: 'Exchange for coin',
     enum: Exchange,
     example: Exchange.MEXC,
   })
+  @IsNotEmpty()
   @IsEnum(Exchange, { message: 'Exchange must be one of MEXC, HTX, BINANCE' })
   exchange: Exchange;
 
@@ -15,9 +16,4 @@ export class CancelBatchOrderDto {
   @IsString()
   @IsNotEmpty()
   symbol: string;
-
-  @ApiProperty({ description: 'Order IDs to cancel', type: [String] })
-  @IsArray()
-  @IsString({ each: true })
-  orderIds: string[];
 }

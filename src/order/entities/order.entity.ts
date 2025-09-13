@@ -18,7 +18,7 @@ export class Order {
   id: number;
 
   @ApiProperty({ description: 'User ID from system' })
-  @Column()
+  @Column({ nullable: true })
   userId: string;
 
   @ApiProperty({ description: 'Exchange for order(MEXC, HTX)', required: true })
@@ -74,6 +74,14 @@ export class Order {
   @ApiProperty({ description: 'Order status', example: 'NEW' })
   @Column({ default: 'NEW' })
   status: string;
+
+  @ApiProperty({ description: 'Bot version' })
+  @Column({ type: 'smallint', default: 0 })
+  no_cancel: number;
+
+  @ApiProperty({ description: 'Is bot order?' })
+  @Column({ type: 'smallint', default: 0 })
+  is_bot_order: number;
 
   @ApiProperty({
     description: 'Creation timestamp from exchange',

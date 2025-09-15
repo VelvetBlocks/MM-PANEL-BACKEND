@@ -11,6 +11,14 @@ export enum ORDER_TYPE {
   Market = 'MARKET',
 }
 
+export enum ORDER_STATUS {
+  NEW = 'NEW',
+  PARTIALLY_FILLED = 'PARTIALLY_FILLED',
+  FILLED = 'FILLED',
+  CANCELED = 'CANCELED',
+  EXPIRED = 'EXPIRED',
+}
+
 @Entity({ name: 'orders' })
 export class Order {
   @ApiProperty({ description: 'Internal ID' })
@@ -71,9 +79,9 @@ export class Order {
   @Column({ nullable: true })
   timeInForce?: string;
 
-  @ApiProperty({ description: 'Order status', example: 'NEW' })
-  @Column({ default: 'NEW' })
-  status: string;
+  @ApiProperty({ description: 'Order status', enum: ORDER_STATUS, example: ORDER_STATUS.NEW })
+  @Column({ type: 'enum', enum: ORDER_STATUS, default: ORDER_STATUS.NEW })
+  status: ORDER_STATUS;
 
   @ApiProperty({ description: 'Bot version' })
   @Column({ type: 'smallint', default: 0 })

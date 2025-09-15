@@ -22,10 +22,7 @@ export class VolumeBotSettingsService {
 
   // Add new VolumeBotSetting
   async add(data: Partial<VolumeBotSettings>): Promise<VolumeBotSettings> {
-    console.log('data ----------> ', data);
-
     const botSetting = this.botRepo.create(data);
-    console.log('botSetting ----------> ', botSetting);
     return await this.botRepo.save(botSetting);
   }
 
@@ -57,11 +54,7 @@ export class VolumeBotSettingsService {
     if (credsAddedOrChanged) {
       switch (bot.coin.exchange) {
         case Exchange.MEXC:
-          console.log('botSetting.creds -----------------> ', bot.creds);
-
           const balance: any = await this.mexcService.getBalances(bot.creds);
-          console.log('balance -----------------> ', balance);
-
           if (balance.code) {
             throw new BadRequestException(balance.msg || 'Failed to fetch MEXC balance');
           }
@@ -93,62 +86,6 @@ export class VolumeBotSettingsService {
     }
     return bot;
   }
-
-  // async update(
-  //   userId: string,
-  //   id: number,
-  //   data: UpdateVolumeBotSettingsDto,
-  // ): Promise<VolumeBotSettings> {
-  //   // Get the current stored botSetting
-  //   const existingBotSetting = await this.botRepo.findOne({ where: { id } });
-  //   if (!existingBotSetting) throw new NotFoundException('Bot setting not found!');
-
-  //   // Keep old creds before update
-  //   const oldApiKey = existingBotSetting.creds?.apiKey;
-  //   const oldSecretKey = existingBotSetting.creds?.secretKey;
-
-  //   // Apply updates
-  //   Object.assign(existingBotSetting, data);
-  //   const bot = await this.botRepo.save(existingBotSetting);
-
-  //   // ✅ Check if creds were added or changed
-  //   const newApiKey = bot.creds?.apiKey;
-  //   const newSecretKey = bot.creds?.secretKey;
-
-  //   const credsAddedOrChanged =
-  //     newApiKey && newSecretKey && (newApiKey !== oldApiKey || newSecretKey !== oldSecretKey);
-
-  //   if (credsAddedOrChanged) {
-  //     switch (bot.coin.exchange) {
-  //       case Exchange.MEXC:
-  //         console.log('botSetting.creds -----------------> ', bot.creds);
-
-  //         const balance: any = await this.mexcService.getBalances(bot.creds);
-  //         console.log('balance -----------------> ', balance);
-
-  //         if (balance.code) {
-  //           throw new BadRequestException(balance.msg || 'Failed to fetch MEXC balance');
-  //         }
-
-  //         for (const b of balance.balances) {
-  //           await this.balanceService.upsert({
-  //             userId,
-  //             exchange: bot.coin.exchange,
-  //             asset: b.asset,
-  //             free: parseFloat(b.free),
-  //             locked: parseFloat(b.locked),
-  //             available: parseFloat(b.available),
-  //           });
-  //         }
-  //         break;
-
-  //       default:
-  //         break;
-  //     }
-  //   }
-
-  //   return bot;
-  // }
 
   async resetBalances(botId: number): Promise<VolumeBotSettings> {
     // 1. Find bot with relation

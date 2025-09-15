@@ -125,9 +125,6 @@ export class MexcService {
       params.timeInForce = 'GTC';
     }
 
-    // Log the parameters before stringifying for debugging
-    console.log('Pre-stringified params:', params);
-
     // Use qs.stringify to ensure consistent parameter sorting for the signature
     const queryString = qs.stringify(params);
     const signature = crypto
@@ -136,8 +133,6 @@ export class MexcService {
       .digest('hex');
 
     const url = `${this.baseUrl}${endpoint}?${queryString}&signature=${signature}`;
-
-    console.log('Generated URL:', url); // Log the full URL for debugging
 
     // The POST request is made with the parameters in the URL, and an empty body.
     return this.request('POST', url, botCred.apiKey);
@@ -149,10 +144,7 @@ export class MexcService {
   async createBatchOrders(
     botCred: CredsDto,
     batchDto: CreateBatchOrderMexcDto,
-    test = false,
   ): Promise<MexcBatchOrderResponse[]> {
-    const endpoint = test ? '/api/v3/batchOrders/test' : '/api/v3/batchOrders';
-
     const batchOrders = batchDto.batchOrders.map((o) => {
       const order: any = {
         symbol: o.symbol,
@@ -188,7 +180,7 @@ export class MexcService {
       .update(queryString)
       .digest('hex');
 
-    const url = `${this.baseUrl}${endpoint}?${queryString}&signature=${signature}`;
+    const url = `${this.baseUrl}/api/v3/batchOrders?${queryString}&signature=${signature}`;
 
     // ✅ Correctly typed response
     return this.request<MexcBatchOrderResponse[]>('POST', url, botCred.apiKey);
@@ -246,9 +238,6 @@ export class MexcService {
       .digest('hex');
 
     const url = `${this.baseUrl}/api/v3/order?${queryString}&signature=${signature}`;
-
-    console.log('Cancel Order URL:', url);
-
     return this.request('DELETE', url, botCred.apiKey);
   }
 
@@ -258,10 +247,12 @@ export class MexcService {
   async cancelAllCoinWiseOrders(botCred: CredsDto, symbol: string, orderIds: string[]) {
     const params: Record<string, any> = {
       symbol,
-      orderIds: JSON.stringify(orderIds),
       timestamp: Date.now(),
       recvWindow: 5000,
     };
+    if (orderIds) {
+      params.orderIds = JSON.stringify(orderIds);
+    }
 
     const queryString = qs.stringify(params);
     const signature = crypto
@@ -270,9 +261,6 @@ export class MexcService {
       .digest('hex');
 
     const url = `${this.baseUrl}/api/v3/openOrders?${queryString}&signature=${signature}`;
-
-    console.log('Cancel All Orders URL ---> :', url);
-
     return this.request('DELETE', url, botCred.apiKey);
   }
 

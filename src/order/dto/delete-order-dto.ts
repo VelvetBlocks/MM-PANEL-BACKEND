@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsArray, IsEnum, IsInt, IsNotEmpty, IsString } from 'class-validator';
+import { IsArray, IsEnum, IsInt, IsNotEmpty, IsOptional, IsString } from 'class-validator';
 import { Exchange } from 'src/coins/entities/coin.entity';
 
 export class CancelBatchOrderDto {
@@ -18,6 +18,7 @@ export class CancelBatchOrderDto {
 
   @ApiProperty({ description: 'Order IDs to cancel', type: [String] })
   @IsArray()
+  @IsOptional()
   @IsString({ each: true })
-  orderIds: string[];
+  orderIds?: string[];
 }

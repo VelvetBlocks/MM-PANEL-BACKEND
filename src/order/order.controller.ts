@@ -6,12 +6,17 @@ import { ActiveUser } from 'src/common/decorators/active-user.decorator';
 import { CreateOrderDto } from './dto/create-order-dto';
 import { CreateBatchOrderDto } from './dto/create-batch-order-dto';
 import { CancelBatchOrderDto } from './dto/delete-order-dto';
-import { GetAllOpenOrderDto } from './dto/get-all-open-order.dto';
+import { GetAllOpenOrderDto, GetAllOrderDto } from './dto/get-all-open-order.dto';
+import { OrderLogService } from './services/order-log.service';
+import { CreateOrderLogDto } from './dto/order-log.dot';
 
 @ApiTags('order')
 @Controller('order')
 export class OrderController {
-  constructor(private readonly orderService: OrderService) {}
+  constructor(
+    private readonly orderService: OrderService,
+    private readonly orderLogService: OrderLogService,
+  ) {}
 
   @ApiUnauthorizedResponse({ description: 'Unauthorized' })
   @ApiOkResponse({ description: 'Order created successfully', type: Order })
@@ -47,9 +52,9 @@ export class OrderController {
   @ApiUnauthorizedResponse({ description: 'Unauthorized' })
   @ApiOkResponse({ description: 'List of order', type: [Order] })
   @ApiBearerAuth()
-  @Post('get')
-  async findAll(@ActiveUser('id') userId: string): Promise<any> {
-    return this.orderService.findAll(userId);
+  @Post('get_orders')
+  async findAll(@Body() dto: GetAllOrderDto): Promise<any> {
+    return this.orderService.findAll(dto);
   }
 
   @ApiUnauthorizedResponse({ description: 'Unauthorized' })
@@ -58,5 +63,13 @@ export class OrderController {
   @Post('all_open_orders')
   async getAllOpenOrders(@Body() dto: GetAllOpenOrderDto): Promise<any> {
     return await this.orderService.getAllOpenOrders(dto);
+  }
+
+  @ApiUnauthorizedResponse({ description: 'Unauthorized' })
+  @ApiOkResponse({ description: 'List of order logs' })
+  @ApiBearerAuth()
+  @Post('all_orders_logs')
+  async getAllBotLogs(@Body() dto: GetAllOpenOrderDto): Promise<any> {
+    return await this.orderLogService.getAllLogs(dto.exchange, dto.symbol);
   }
 }

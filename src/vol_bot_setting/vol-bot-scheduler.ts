@@ -4,10 +4,12 @@ import { Repository } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
 import { TRADE_FLOW, VolumeBotSettings } from './entities/vol-bot-setting.entity';
 import { OrderService } from 'src/order/order.service';
-import { ORDER_SIDE, ORDER_TYPE } from 'src/order/entities/order.entity';
+import { ORDER_SIDE, ORDER_STATUS, ORDER_TYPE } from 'src/order/entities/order.entity';
 import { Exchange, Status } from 'src/coins/entities/coin.entity';
 import { MEXC_REQUIRED_MIN_BALANCE, MexcService } from 'src/mexc/mexc.service';
 import { CoinsService } from 'src/coins/coin.service';
+import { OrderLogService } from 'src/order/services/order-log.service';
+import { ORDER_LOG_TYPE } from 'src/order/entities/order-log.entity';
 
 @Injectable()
 export class VolumeBotScheduler {
@@ -19,6 +21,7 @@ export class VolumeBotScheduler {
     private readonly orderService: OrderService,
     private readonly mexcService: MexcService,
     private readonly coinService: CoinsService,
+    private readonly orderLogService: OrderLogService,
   ) {}
   // Track next execution time per bot in memory
   private nextExecutionMap: Map<number, number> = new Map();
@@ -81,6 +84,12 @@ export class VolumeBotScheduler {
 
       if (isUsdtOutOfRange || isCoinOutOfRange) {
         this.logger.warn(`Bot ${bot.id} stopped: balance drift detected.`);
+        await this.orderLogService.createLog({
+          exchange: bot.coin.exchange,
+          symbol: bot.coin.symbol,
+          text: `Bot Stopped: Balance drift detected your live balance is ${isUsdtOutOfRange ? liveUsdt : liveCoin}`,
+          type: ORDER_LOG_TYPE.Warning,
+        });
         await this.stopBot(bot.id, bot.coin.id);
         return;
       }
@@ -119,6 +128,12 @@ export class VolumeBotScheduler {
           );
           if (parseFloat(volume.quoteVolume) >= parseFloat(bot.volumeLimit24H)) {
             this.logger.warn(`BOT ${bot.id} STOPPED: VOLUME TRIGGERED!`);
+            await this.orderLogService.createLog({
+              exchange: bot.coin.exchange,
+              symbol: bot.coin.symbol,
+              text: `BOT ${bot.id} STOPPED: VOLUME TRIGGERED!`,
+              type: ORDER_LOG_TYPE.Warning,
+            });
             await this.stopBot(bot.id, bot.coin.id);
             return;
           }
@@ -136,6 +151,12 @@ export class VolumeBotScheduler {
             bot.tradeAmountMin > usdtBalance.available
           ) {
             console.log('No sufficient USDT balance found.');
+            await this.orderLogService.createLog({
+              exchange: bot.coin.exchange,
+              symbol: bot.coin.symbol,
+              text: `Bot ${bot.id} No Sufficient USDT Balance Found! current balance is ${usdtBalance.available}`,
+              type: ORDER_LOG_TYPE.Warning,
+            });
             return;
           }
           console.log('USDT Balance (available):', usdtBalance.available);
@@ -158,6 +179,12 @@ export class VolumeBotScheduler {
 
           if (isOneTickDiff) {
             console.log('NOT ORDER PLACE DUE TO PRICE HAS JUST 1 POINT DIFFERENCE');
+            await this.orderLogService.createLog({
+              exchange: bot.coin.exchange,
+              symbol: bot.coin.symbol,
+              text: `NOT ORDER PLACE DUE TO PRICE HAS JUST 1 POINT DIFFERENCE B-${buy} S-${sell}`,
+              type: ORDER_LOG_TYPE.Warning,
+            });
             return;
           }
 
@@ -216,6 +243,12 @@ export class VolumeBotScheduler {
 
               if (Number(tokenQuantityBuySell) > Number(coinBalance)) {
                 console.log('NOT ENOUGH COIN BALANCE TO PLACE ORDER');
+                await this.orderLogService.createLog({
+                  exchange: bot.coin.exchange,
+                  symbol: bot.coin.symbol,
+                  text: `NOT ENOUGH COIN BALANCE TO PLACE ORDER BALANCE = ${coinBalance}`,
+                  type: ORDER_LOG_TYPE.Warning,
+                });
                 return;
               }
 
@@ -242,6 +275,12 @@ export class VolumeBotScheduler {
               ).toFixed(bot.quantityDecimal);
               if (Number(tokenQuantitySellBuy) > Number(coinBalance)) {
                 console.log('NOT ENOUGH COIN BALANCE TO PLACE ORDER');
+                await this.orderLogService.createLog({
+                  exchange: bot.coin.exchange,
+                  symbol: bot.coin.symbol,
+                  text: `NOT ENOUGH COIN BALANCE TO PLACE ORDER BALANCE = ${coinBalance}`,
+                  type: ORDER_LOG_TYPE.Warning,
+                });
                 return;
               }
 
@@ -274,11 +313,21 @@ export class VolumeBotScheduler {
                 Number(amount.toFixed(bot.amountDecimal)) / Number(price.toFixed(bot.priceDecimal))
               ).toFixed(bot.quantityDecimal);
 
+              if (Number(tokenQuantity) > Number(coinBalance)) {
+                console.log('NOT ENOUGH COIN BALANCE TO PLACE ORDER');
+                await this.orderLogService.createLog({
+                  exchange: bot.coin.exchange,
+                  symbol: bot.coin.symbol,
+                  text: `NOT ENOUGH COIN BALANCE TO PLACE ORDER BALANCE = ${coinBalance}`,
+                  type: ORDER_LOG_TYPE.Warning,
+                });
+                return;
+              }
               order = createOrderPair(firstSide, secondSide, Number(tokenQuantity), price);
               break;
           }
 
-          console.log('ORDER ---------------- :', order);
+          console.log('ORDERS ---------------- :', order);
 
           // Execute batch order
           const orders = await this.orderService.createBatch(
@@ -287,15 +336,15 @@ export class VolumeBotScheduler {
             bot.coin.symbol,
             order,
           );
-          console.log('orders ---------------- :', orders);
+          // console.log('orders ---------------- :', orders);
 
           // Extract orderIds
           const orderIds = orders.savedOrders.map((o) => o.orderId);
-          console.log('cancel order id ------------ : ', orderIds);
+          // console.log('cancel order id ------------ : ', orderIds);
 
           // Cancel all those orders
           await this.mexcService.cancelAllCoinWiseOrders(bot.creds, bot.coin.symbol, orderIds);
-
+          await this.orderService.updateStatusBatch(orderIds, ORDER_STATUS.CANCELED);
           this.logger.log(
             `Bot ${bot.id} executed ${bot.tradeFlow} order of ${amount} ${bot.coin.symbol}`,
           );
@@ -306,6 +355,12 @@ export class VolumeBotScheduler {
           break;
       }
     } catch (err) {
+      await this.orderLogService.createLog({
+        exchange: bot.coin.exchange,
+        symbol: bot.coin.symbol,
+        text: `BOT ERROR EXECUTION FAILED = ${err.message}`,
+        type: ORDER_LOG_TYPE.Error,
+      });
       this.logger.error(`Bot ${bot.id} execution failed: ${err.message}`);
     }
   }
@@ -313,7 +368,6 @@ export class VolumeBotScheduler {
   private async stopBot(botId: number, id: number) {
     await this.coinService.statusUpdate({ id, status: Status.OFF });
     this.nextExecutionMap.delete(botId); // stop scheduling further
-    this.logger.log(`Bot ${botId} has been turned OFF due to balance thresholds.`);
   }
 
   private getRandomInt(min: number, max: number): number {

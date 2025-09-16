@@ -98,7 +98,7 @@ export class CreateVolumeBotSettingsDto {
   tradeAmountMax: number;
 
   @ApiProperty({
-    description: 'Exchange for coin',
+    description: 'Tread Flow for coin',
     enum: TRADE_FLOW,
     example: TRADE_FLOW.Buy_Sell,
   })
@@ -232,7 +232,7 @@ export class UpdateVolumeBotSettingsDto {
   tradeAmountMax?: number;
 
   @ApiProperty({
-    description: 'Exchange for coin',
+    description: 'Tread Flow for coin',
     enum: TRADE_FLOW,
     example: TRADE_FLOW.Buy_Sell,
   })

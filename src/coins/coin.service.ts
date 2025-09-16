@@ -72,15 +72,29 @@ export class CoinsService {
       .getMany();
 
     for (const coin of coins) {
-      const bot = coin.volBotSettings?.[0]; // 👈 take first element
-
+      const bot = coin.volBotSettings?.[0]; // take first setting
       if (!bot) continue;
 
       switch (coin.exchange) {
         case 'MEXC': {
-          const balance: any = await this.mexcService.getBalances(bot.creds);
-          if (balance.code) {
-            throw new BadRequestException(balance.msg || 'Failed to fetch MEXC balance');
+          // Parse credentials (they are JSON from DB)
+          let credentials: any;
+          try {
+            credentials = typeof bot.creds === 'string' ? JSON.parse(bot.creds) : bot.creds;
+          } catch (err) {
+            continue; // skip if credentials are not valid JSON
+          }
+
+          // Validate credentials: must have apiKey & secretKey
+          if (!credentials?.apiKey || !credentials?.secretKey) {
+            continue; // skip this coin if missing keys
+          }
+
+          // Call exchange API safely
+          const balance: any = await this.mexcService.getBalances(credentials);
+          if (balance?.code) {
+            // if API error, skip but don’t break the loop
+            continue;
           }
 
           const botUsdt = balance.balances.find((b: any) => b.asset.toUpperCase() === 'USDT');

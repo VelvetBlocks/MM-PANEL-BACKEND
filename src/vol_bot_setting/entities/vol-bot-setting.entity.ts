@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { Exclude } from 'class-transformer';
+import { Expose } from 'class-transformer';
 import { Coins } from 'src/coins/entities/coin.entity';
 import {
   Column,
@@ -125,12 +125,8 @@ export class VolumeBotSettings {
     type: 'json',
     nullable: true,
   })
-  @Exclude()
-  creds: {
-    apiKey: string;
-    secretKey: string;
-    apiKeyId?: string;
-  } = { apiKey: '', secretKey: '', apiKeyId: '' };
+ @Expose({ groups: ['withCreds'] }) // ONLY shown when we ask for this group
+  creds: { apiKey: string; secretKey: string; apiKeyId?: string };
 
   @ApiProperty({ description: 'Created date in DB' })
   @CreateDateColumn({ name: 'created_at' })

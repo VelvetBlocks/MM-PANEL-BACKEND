@@ -261,7 +261,7 @@ export class VolumeBotScheduler {
               break;
             case TRADE_FLOW.Sell_Buy:
               console.log('sell ------> ', sell);
-              let priceSellBuy = +(sell + multiplyPrice).toFixed(bot.priceDecimal);
+              let priceSellBuy = +(sell - multiplyPrice).toFixed(bot.priceDecimal);
               console.log('priceSellBuy ------> ', priceSellBuy);
 
               if (priceSellBuy === sell) {
@@ -302,7 +302,7 @@ export class VolumeBotScheduler {
                   price = price + 0.000001;
                 }
               } else if (firstSide === ORDER_SIDE.Sell) {
-                price = +(sell + multiplyPrice).toFixed(bot.priceDecimal);
+                price = +(sell - multiplyPrice).toFixed(bot.priceDecimal);
                 if (price === sell) {
                   console.log('SAME Sell_Buy PRICE ------> ', price.toFixed(bot.priceDecimal));
                   price = price - 0.000001;

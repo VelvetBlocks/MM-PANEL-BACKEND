@@ -6,6 +6,7 @@ import { UpdateVolumeBotSettingsDto } from './dto/vol-bot-setting.dto';
 import { Exchange } from 'src/coins/entities/coin.entity';
 import { MexcService } from 'src/mexc/mexc.service';
 import { BalanceService } from 'src/balance/balances.service';
+import { plainToInstance } from 'class-transformer';
 
 @Injectable()
 export class VolumeBotSettingsService {
@@ -33,7 +34,7 @@ export class VolumeBotSettingsService {
     data: UpdateVolumeBotSettingsDto,
   ): Promise<VolumeBotSettings> {
     // Get the current stored botSetting
-    const existingBotSetting = await this.botRepo.findOne({ where: { id } });
+    const existingBotSetting = await this.botRepo.findOne({ where: { id }, relations: ['coin'] });
     if (!existingBotSetting) throw new NotFoundException('Bot setting not found!');
 
     // Keep old creds before update
@@ -42,7 +43,8 @@ export class VolumeBotSettingsService {
 
     // Apply updates
     Object.assign(existingBotSetting, data);
-    const bot = await this.botRepo.save(existingBotSetting);
+    const savedBot = await this.botRepo.save(existingBotSetting);
+    const bot = { ...savedBot, coin: existingBotSetting.coin };
 
     // ✅ Check if creds were added or changed
     const newApiKey = bot.creds?.apiKey;
@@ -52,7 +54,7 @@ export class VolumeBotSettingsService {
       newApiKey && newSecretKey && (newApiKey !== oldApiKey || newSecretKey !== oldSecretKey);
 
     if (credsAddedOrChanged) {
-      switch (bot.coin.exchange) {
+      switch (bot?.coin?.exchange) {
         case Exchange.MEXC:
           const balance: any = await this.mexcService.getBalances(bot.creds);
           if (balance.code) {
@@ -136,15 +138,14 @@ export class VolumeBotSettingsService {
     return bot;
   }
 
-  // Get all bot settings for a specific coin
-  async getByCoin(coinId: number): Promise<VolumeBotSettings> {
-    // const coin = await this.coinsService.findOne(coinId);
-    // if (!coin) throw new NotFoundException("Coin not found");
-
-    return this.botRepo.findOne({
+  async getByCoin(coinId: number): Promise<VolumeBotSettings | null> {
+    const setting = await this.botRepo.findOne({
       where: { coin: { id: coinId } },
       relations: ['coin'],
     });
+    if (!setting) return null;
+    // Convert to class instance and include group 'withCreds'
+    return plainToInstance(VolumeBotSettings, setting, { groups: ['withCreds'] });
   }
 
   // Get all bot settings for a specific coin

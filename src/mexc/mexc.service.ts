@@ -244,24 +244,47 @@ export class MexcService {
   /** -------------------------
    * Cancel all open orders for a symbol
    * ------------------------- */
-  async cancelAllCoinWiseOrders(botCred: CredsDto, symbol: string, orderIds: string[]) {
-    const params: Record<string, any> = {
-      symbol,
-      timestamp: Date.now(),
-      recvWindow: 5000,
-    };
-    if (orderIds) {
-      params.orderIds = JSON.stringify(orderIds);
+  async cancelAllCoinWiseOrders(botCred: CredsDto, symbol: string, orderIds?: string[]) {
+    if (orderIds && orderIds.length > 0) {
+      // If many orderIds, faster to just cancel all for that symbol
+      // if (orderIds.length > 3) {
+      //   const params = { symbol, timestamp: Date.now(), recvWindow: 5000 };
+      //   const queryString = qs.stringify(params);
+      //   const signature = crypto
+      //     .createHmac('sha256', botCred.secretKey)
+      //     .update(queryString)
+      //     .digest('hex');
+
+      //   const url = `${this.baseUrl}/api/v3/openOrders?${queryString}&signature=${signature}`;
+      //   return this.request('DELETE', url, botCred.apiKey);
+      // }
+
+      // If few orderIds, cancel them in parallel
+      return Promise.all(
+        orderIds.map(async (orderId) => {
+          const params = { symbol, orderId, timestamp: Date.now(), recvWindow: 5000 };
+          const queryString = qs.stringify(params);
+          const signature = crypto
+            .createHmac('sha256', botCred.secretKey)
+            .update(queryString)
+            .digest('hex');
+
+          const url = `${this.baseUrl}/api/v3/order?${queryString}&signature=${signature}`;
+          return this.request('DELETE', url, botCred.apiKey);
+        }),
+      );
+    } else {
+      // Cancel ALL for symbol
+      const params = { symbol, timestamp: Date.now(), recvWindow: 5000 };
+      const queryString = qs.stringify(params);
+      const signature = crypto
+        .createHmac('sha256', botCred.secretKey)
+        .update(queryString)
+        .digest('hex');
+
+      const url = `${this.baseUrl}/api/v3/openOrders?${queryString}&signature=${signature}`;
+      return this.request('DELETE', url, botCred.apiKey);
     }
-
-    const queryString = qs.stringify(params);
-    const signature = crypto
-      .createHmac('sha256', botCred.secretKey)
-      .update(queryString)
-      .digest('hex');
-
-    const url = `${this.baseUrl}/api/v3/openOrders?${queryString}&signature=${signature}`;
-    return this.request('DELETE', url, botCred.apiKey);
   }
 
   /** -------------------------

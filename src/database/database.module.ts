@@ -8,7 +8,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: async (configService: ConfigService) => ({
-        type: 'mysql',
+        type: 'postgres',
         host: configService.get<string>('database.host'),
         port: configService.get<number>('database.port'),
         username: configService.get<string>('database.username'),
@@ -17,6 +17,9 @@ import { TypeOrmModule } from '@nestjs/typeorm';
         autoLoadEntities: true,
         synchronize: true,
         logging: false,
+        ssl: {
+          rejectUnauthorized: false, // needed for Render (no CA cert)
+        },
       }),
     }),
   ],

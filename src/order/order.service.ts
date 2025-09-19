@@ -231,7 +231,7 @@ export class OrderService {
         status: exOrder.status,
 
         // Flags from DB
-        manual: dbOrder ? !dbOrder.is_bot_order : false,
+        manual: dbOrder ? dbOrder.is_bot_order === 1 : false,
         noCancel: dbOrder ? dbOrder.no_cancel === 1 : false,
       };
     });

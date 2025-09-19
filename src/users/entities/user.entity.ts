@@ -26,23 +26,17 @@ export enum UserPermission {
   BOT_START_STOP_RESET = 'bot_start_stop_reset',
 }
 
-@Entity({
-  name: 'users',
-})
+@Entity({ name: 'users' })
 export class User {
   @ApiProperty({
-    description: 'ID of user',
+    description: 'Unique user ID',
     example: 'admin123',
   })
-  @PrimaryColumn({ type: 'varchar', unique: true })
+  @PrimaryColumn({ type: 'varchar', length: 100, nullable: false }) // manual, no auto-generation
   id: string;
 
-  // @ApiProperty({ description: 'Username of user', example: 'admin123' })
-  // @Column({ unique: true })
-  // username: string;
-
   @ApiProperty({ description: 'IP addresses of user' })
-  @Column('json', { nullable: false })
+  @Column('jsonb', { nullable: false })
   ips: string[] = [];
 
   @ApiHideProperty()
@@ -56,7 +50,11 @@ export class User {
     isArray: true,
     example: [UserPermission.ADMIN, UserPermission.BOT_CREATE],
   })
-  @Column('simple-array', { nullable: true })
+  @Column({
+    type: 'text',
+    array: true, // PostgreSQL array type
+    nullable: true,
+  })
   perms: UserPermission[];
 
   @ApiProperty({ description: 'Created date of user' })

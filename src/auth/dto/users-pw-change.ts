@@ -1,13 +1,24 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsNotEmpty, MinLength } from 'class-validator';
+import { IsNotEmpty, Matches, MaxLength, MinLength } from 'class-validator';
 
 export class ChangePasswordDto {
   @ApiProperty({ description: 'Current password', example: 'oldPassword123' })
   @IsNotEmpty()
   readonly pw: string;
 
-  @ApiProperty({ description: 'New password', example: 'newPassword456' })
+  @ApiProperty({
+    description: 'Password of user',
+    example: 'Pass#123',
+  })
+  @MinLength(8, {
+    message: 'password too short',
+  })
+  @MaxLength(20, {
+    message: 'password too long',
+  })
+  @Matches(/((?=.*\d)|(?=.*\W+))(?![.\n])(?=.*[A-Z])(?=.*[a-z]).*$/, {
+    message: 'password too weak',
+  })
   @IsNotEmpty()
-  @MinLength(6)
   readonly pwNew: string;
 }

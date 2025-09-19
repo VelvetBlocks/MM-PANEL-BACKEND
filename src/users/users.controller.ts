@@ -4,9 +4,8 @@ import { ApiBearerAuth, ApiOkResponse, ApiTags, ApiUnauthorizedResponse } from '
 import { ActiveUser } from '../common/decorators/active-user.decorator';
 import { User } from './entities/user.entity';
 import { UsersService } from './users.service';
-import { CreateUserDto, SignUpDto, UpdateUserDto } from 'src/auth/dto/sign-up.dto';
+import { SignUpDto, UpdateUserDto } from 'src/auth/dto/sign-up.dto';
 import { AuthService } from 'src/auth/auth.service';
-import { generateStrongPassword } from 'src/common/utils';
 
 @ApiTags('users')
 @Controller('users')
@@ -20,18 +19,17 @@ export class UsersController {
   @ApiOkResponse({ description: 'User created successfully', type: User })
   @ApiBearerAuth()
   @Post('create')
-  async signUp(@Body() signUpDto: CreateUserDto): Promise<User> {
-    const pw = await generateStrongPassword();
-    const user = this.authService.signUp({ ...signUpDto, pw });
-    return { ...user, pw } as any;
+  async signUp(@Body() signUpDto: SignUpDto): Promise<User> {
+    const user = this.authService.signUp({ ...signUpDto });
+    return user;
   }
 
   @ApiUnauthorizedResponse({ description: 'Unauthorized' })
   @ApiOkResponse({ description: 'User created successfully', type: User })
   @ApiBearerAuth()
   @Post('users_upd')
-  async updateUser(@Body() signUpDto: UpdateUserDto): Promise<User> {
-    return this.authService.updateUser(signUpDto.id, signUpDto);
+  async updateUser(@Body() updateUserDto: UpdateUserDto): Promise<User> {
+    return this.authService.updateUser(updateUserDto.id, updateUserDto);
   }
 
   @ApiUnauthorizedResponse({ description: 'Unauthorized' })

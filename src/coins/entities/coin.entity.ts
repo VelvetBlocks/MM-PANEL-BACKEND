@@ -27,9 +27,14 @@ export class Coins {
   @PrimaryGeneratedColumn()
   id: number;
 
+  // 🔹 Option A: keep userId as raw string
   @ApiProperty({ description: 'User ID from system' })
-  @Column()
-  userId: string; // or use ManyToOne if linking with Users entity
+  @Column({ type: 'varchar', length: 100 })
+  userId: string;
+
+  // 🔹 Option B: proper relation (recommended)
+  // @ManyToOne(() => User, (user) => user.coins, { onDelete: 'CASCADE' })
+  // user: User;
 
   @ApiProperty({
     description: 'Exchange for coins (MEXC, HTX, BINANCE)',
@@ -38,17 +43,16 @@ export class Coins {
   @Column({ type: 'enum', enum: Exchange })
   exchange: Exchange;
 
-  // priceDecimal / quantityDecimal / name / icon
   @ApiProperty({ description: 'Trading pair symbol', example: 'LFUSDT' })
   @Column({ type: 'varchar', length: 20 })
   symbol: string;
 
   @ApiProperty({ description: 'Name for coin', example: 'LF LABS' })
-  @Column({ type: 'text', default: null })
+  @Column({ type: 'text', nullable: true })
   name: string;
 
   @ApiProperty({ description: 'Icon for coin', example: '' })
-  @Column({ type: 'text', default: null })
+  @Column({ type: 'text', nullable: true })
   icon: string;
 
   @ApiProperty({ description: 'Coins status', enum: Status })

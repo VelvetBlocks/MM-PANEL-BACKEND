@@ -277,22 +277,6 @@ export class UpdateVolumeBotSettingsDto {
   refPriceDiffPercentMax?: number;
 
   @ApiProperty({
-    description: 'Bot version',
-    example: 'v1.0.0',
-    required: false,
-  })
-  @IsOptional()
-  @IsString()
-  @MaxLength(20)
-  version?: string;
-
-  @ApiProperty({ description: 'Status for vol bot', example: 1 })
-  @IsInt()
-  @Min(0)
-  @Max(2)
-  status: number;
-
-  @ApiProperty({
     description: 'API credentials',
     type: CredsDto,
     required: false,

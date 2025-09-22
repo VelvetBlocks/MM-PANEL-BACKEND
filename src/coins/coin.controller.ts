@@ -33,9 +33,9 @@ export class CoinsController {
   @ApiUnauthorizedResponse({ description: 'Unauthorized' })
   @ApiOkResponse({ description: 'Coin get successfully', type: Coins })
   @ApiBearerAuth()
-  @Post('get_exc')
+  @Post('get_by_symbol')
   findExcCoins(@Body() dto: FindExcCoinsDto) {
-    return this.coinsService.findExcCoins(dto.exchange);
+    return this.coinsService.findExcCoins(dto);
   }
 
   @ApiUnauthorizedResponse({ description: 'Unauthorized' })

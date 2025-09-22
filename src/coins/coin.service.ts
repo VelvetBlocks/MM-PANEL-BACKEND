@@ -8,7 +8,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Coins, Exchange } from './entities/coin.entity';
-import { BotStatusUpdateDto, CreateCoinDto } from './dto/create-coin.dto';
+import { BotStatusUpdateDto, CreateCoinDto, FindExcCoinsDto } from './dto/create-coin.dto';
 import { VolumeBotSettingsService } from 'src/vol_bot_setting/vol-bot-setting.service';
 import { VolumeBotSettings } from 'src/vol_bot_setting/entities/vol-bot-setting.entity';
 import { MexcService } from 'src/mexc/mexc.service';
@@ -131,9 +131,88 @@ export class CoinsService {
   }
 
   /** Get coin by exchange */
-  async findExcCoins(exchange: Exchange): Promise<Coins[]> {
-    const coin = await this.coinsRepo.find({ where: { exchange } });
-    if (!coin) throw new NotFoundException(`Coin with ${exchange} not found`);
+  async findExcCoins(data: FindExcCoinsDto): Promise<any> {
+    const coin = await this.coinsRepo
+      .createQueryBuilder('coin')
+      .where('coin.exchange = :exchange', { exchange: data.exchange })
+      .andWhere('coin.symbol = :symbol', { symbol: data.symbol })
+      .leftJoinAndSelect('coin.volBotSettings', 'volBotSettings')
+      .select([
+        'coin.id',
+        'coin.userId',
+        'coin.exchange',
+        'coin.symbol',
+        'coin.name',
+        'coin.icon',
+        'coin.status',
+        'coin.createdAt',
+        'volBotSettings.id',
+        'volBotSettings.priceDecimal',
+        'volBotSettings.quantityDecimal',
+        'volBotSettings.amountDecimal',
+        'volBotSettings.token_balance',
+        'volBotSettings.usdt_balance',
+        'volBotSettings.status',
+        'volBotSettings.tradeFlow',
+        'volBotSettings.creds',
+      ])
+      .getOne();
+
+    if (!coin) throw new NotFoundException(`Coin with ${data.exchange} not found`);
+
+    // --- Normalize volBotSettings to an object (if it's an array take first item) ---
+    let vol = coin.volBotSettings;
+    if (Array.isArray(vol)) {
+      vol = vol.length ? vol[0] : null;
+    }
+    // attach normalized object back
+    coin.volBotSettings = vol;
+
+    // If we have vol settings and this is MEXC, fetch live balances and merge
+    if (coin.exchange === 'MEXC' && vol) {
+      let credentials: any = null;
+      try {
+        credentials = typeof vol.creds === 'string' ? JSON.parse(vol.creds) : vol.creds;
+      } catch (err) {
+        credentials = null;
+      }
+
+      if (credentials?.apiKey && credentials?.secretKey) {
+        try {
+          const balance: any = await this.mexcService.getBalances(credentials);
+
+          if (!balance?.code && Array.isArray(balance.balances)) {
+            const botUsdt = balance.balances.find((b: any) => b.asset.toUpperCase() === 'USDT');
+            const botAsset = balance.balances.find(
+              (b: any) => b.asset.toUpperCase() === coin.name.toUpperCase(),
+            );
+
+            const dbTokenBalance = vol.token_balance || 0;
+            const dbUsdtBalance = vol.usdt_balance || 0;
+
+            const liveTokenBalance = botAsset ? parseFloat(botAsset.available) : 0;
+            const liveUsdtBalance = botUsdt ? parseFloat(botUsdt.available) : 0;
+            const liveTokenBalanceLocked = botAsset ? parseFloat(botAsset.locked) : 0;
+            const liveUsdtBalanceLocked = botUsdt ? parseFloat(botUsdt.locked) : 0;
+
+            vol.token_balance_locked = liveTokenBalanceLocked;
+            vol.usdt_balance_locked = liveUsdtBalanceLocked;
+            vol.token_balance_free = liveTokenBalance;
+            vol.usdt_balance_free = liveUsdtBalance;
+
+            vol.change_token_balance = liveTokenBalance - dbTokenBalance;
+            vol.change_usdt_balance = liveUsdtBalance - dbUsdtBalance;
+          }
+        } catch (err) {
+          // don't throw — just log and return DB values
+          if ((this as any).logger) (this as any).logger.warn('MEXC balance fetch failed', err);
+        }
+      }
+
+      // remove creds before returning
+      if (vol.creds) delete vol.creds;
+    }
+
     return coin;
   }
 

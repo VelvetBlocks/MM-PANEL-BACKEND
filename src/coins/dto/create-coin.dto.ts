@@ -110,6 +110,12 @@ export class FindExcCoinsDto {
   @ApiProperty({ enum: Exchange })
   @IsEnum(Exchange, { message: 'Exchange must be one of MEXC, HTX, BINANCE' })
   exchange: Exchange;
+
+  @ApiProperty({ description: 'Trading pair symbol', example: 'LFUSDT' })
+  @IsString()
+  @MaxLength(20)
+  @IsNotEmpty()
+  symbol: string;
 }
 
 export class BotStatusUpdateDto {

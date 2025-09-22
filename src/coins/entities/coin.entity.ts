@@ -68,5 +68,5 @@ export class Coins {
     () => require('../../vol_bot_setting/entities/vol-bot-setting.entity').VolumeBotSettings,
     (setting: VolumeBotSettings) => setting.coin,
   )
-  volBotSettings: VolumeBotSettings[];
+  volBotSettings: any;
 }

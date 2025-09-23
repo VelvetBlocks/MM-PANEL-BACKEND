@@ -19,7 +19,7 @@ export class OrderService {
   ) {}
 
   // Create single order
-  async create(userId: string, orderData: CreateOrderDto): Promise<Order> {
+  async create(userId: string, orderData: CreateOrderDto): Promise<any> {
     try {
       const bot = await this.volumeBotSettingsService.getByExchangeCoinName(
         orderData.exchange,
@@ -37,13 +37,22 @@ export class OrderService {
             // newClientOrderId: orderData.newClientOrderId,
           });
 
-          const order = this.orderRepository.create({
-            ...orderData,
-            orderId: orderRes.orderId,
-            is_bot_order: 1,
-            userId,
-          });
-          return await this.orderRepository.save(order);
+          // ✅ Check if MEXC API response indicates success
+          if (orderRes && orderRes.orderId) {
+            const order = this.orderRepository.create({
+              ...orderData,
+              orderId: orderRes.orderId,
+              is_bot_order: 1,
+              userId,
+            });
+            return await this.orderRepository.save(order);
+          } else {
+            // ❌ If no orderId or error structure present
+            return {
+              success: false,
+              error: orderRes,
+            };
+          }
           break;
 
         default:

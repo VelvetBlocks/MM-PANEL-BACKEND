@@ -153,6 +153,8 @@ export class CoinsService {
         'volBotSettings.token_balance',
         'volBotSettings.usdt_balance',
         'volBotSettings.status',
+        'volBotSettings.refPriceManual',
+        'volBotSettings.refPriceDiffPercentMax',
         'volBotSettings.tradeFlow',
         'volBotSettings.creds',
       ])

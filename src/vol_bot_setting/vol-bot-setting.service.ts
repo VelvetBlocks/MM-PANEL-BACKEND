@@ -7,6 +7,7 @@ import { Exchange } from 'src/coins/entities/coin.entity';
 import { MexcService } from 'src/mexc/mexc.service';
 import { BalanceService } from 'src/balance/balances.service';
 import { plainToInstance } from 'class-transformer';
+import { ResetBalanceHistory } from './entities/reset-balance.entity';
 
 @Injectable()
 export class VolumeBotSettingsService {
@@ -15,6 +16,8 @@ export class VolumeBotSettingsService {
   constructor(
     @InjectRepository(VolumeBotSettings)
     private readonly botRepo: Repository<VolumeBotSettings>,
+    @InjectRepository(ResetBalanceHistory)
+    private readonly resetBalanceHistory: Repository<ResetBalanceHistory>,
     private readonly mexcService: MexcService,
     private readonly balanceService: BalanceService,
     // @Inject(forwardRef(() => CoinsService))
@@ -120,6 +123,11 @@ export class VolumeBotSettingsService {
 
           await this.botRepo.save(bot);
 
+          await this.resetBalanceHistory.save({
+            coin: bot.coin,
+            usdt_balance: botUsdt ? parseFloat(botUsdt.available) : 0,
+            token_balance: botAsset ? parseFloat(botAsset.available) : 0,
+          });
           this.logger.log(
             `Bot ${bot.id} balances reset → USDT: ${bot.usdt_balance}, ${bot.coin.name}: ${bot.token_balance}`,
           );
@@ -146,6 +154,27 @@ export class VolumeBotSettingsService {
     if (!setting) return null;
     // Convert to class instance and include group 'withCreds'
     return plainToInstance(VolumeBotSettings, setting, { groups: ['withCreds'] });
+  }
+
+  async getBalanceHistoryByCoin(
+    exchange: Exchange,
+    symbol: string,
+    page = 1,
+    pageSize = 10,
+  ): Promise<{ data: ResetBalanceHistory[]; total: number; page: number; pageSize: number }> {
+    const [data, total] = await this.resetBalanceHistory.findAndCount({
+      where: { coin: { symbol, exchange } },
+      order: { createdAt: 'DESC' }, // optional ordering
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    });
+
+    return {
+      data,
+      total,
+      page,
+      pageSize,
+    };
   }
 
   // Get all bot settings for a specific coin

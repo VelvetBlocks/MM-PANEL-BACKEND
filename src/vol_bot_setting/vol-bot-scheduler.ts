@@ -26,8 +26,7 @@ export class VolumeBotScheduler {
   // Track next execution time per bot in memory
   private nextExecutionMap: Map<number, number> = new Map();
 
-  // Cron runs every 5 seconds, but bots run only when their countdown finishes
-  @Cron('*/15 * * * * *')
+  @Cron('*/1 * * * * *')
   async checkBots() {
     // fetch all bots with their coin relation (already eager loaded in entity)
     // const activeBots = await this.botRepo.find({ where: { status: 1 } });
@@ -79,25 +78,30 @@ export class VolumeBotScheduler {
       `);
 
       // final out-of-range flags
-      const isUsdtOutOfRange = liveUsdt < usdtLower || liveUsdt > usdtUpper;
-      const isCoinOutOfRange = liveCoin < coinLower || liveCoin > coinUpper;
-
-      if (isUsdtOutOfRange || isCoinOutOfRange) {
+      if (liveUsdt < usdtLower || liveUsdt > usdtUpper) {
         this.logger.warn(`Bot ${bot.id} stopped: balance drift detected.`);
         await this.orderLogService.createLog({
           exchange: bot.coin.exchange,
           symbol: bot.coin.symbol,
-          text: `Bot Stopped: Balance drift detected your live balance is ${isUsdtOutOfRange ? liveUsdt : liveCoin}`,
+          text: `Currency  ${liveUsdt < usdtLower ? 'Lower' : 'Upper'} Throttle Bot stopped. Before: ${dbUsdt}, Current: ${liveUsdt}`,
           type: ORDER_LOG_TYPE.Warning,
         });
         await this.stopBot(bot.id, bot.coin.id);
         return;
       }
 
-      // 4. If validation passed, continue with normal execution flow
-      console.log('Balance validation passed, executing bot...');
+      if (liveCoin < coinLower || liveCoin > coinUpper) {
+        this.logger.warn(`Bot ${bot.id} stopped: balance drift detected.`);
+        await this.orderLogService.createLog({
+          exchange: bot.coin.exchange,
+          symbol: bot.coin.symbol,
+          text: `Token  ${liveCoin < coinLower ? 'Lower' : 'Upper'} Throttle Bot stopped. Before: ${dbCoin}, Current: ${liveCoin}`,
+          type: ORDER_LOG_TYPE.Warning,
+        });
+        await this.stopBot(bot.id, bot.coin.id);
+        return;
+      }
 
-      // ========================================================================================================= //
       const now = Date.now();
       const nextExecution = this.nextExecutionMap.get(bot.id) || 0;
 
@@ -120,18 +124,12 @@ export class VolumeBotScheduler {
       switch (bot.coin.exchange) {
         case Exchange.MEXC:
           const volume = await this.mexcService.fetch24hrVolumesSymbolWise(bot.creds, 'LFUSDT');
-          console.log(
-            'VOLUME -----------------------> ',
-            volume.volume >= bot.volumeLimit24H,
-            volume.quoteVolume,
-            bot.volumeLimit24H,
-          );
           if (parseFloat(volume.quoteVolume) >= parseFloat(bot.volumeLimit24H)) {
             this.logger.warn(`BOT ${bot.id} STOPPED: VOLUME TRIGGERED!`);
             await this.orderLogService.createLog({
               exchange: bot.coin.exchange,
               symbol: bot.coin.symbol,
-              text: `BOT ${bot.id} STOPPED: VOLUME TRIGGERED!`,
+              text: `Bot Stopped: 24Hours Volume Triggered!`,
               type: ORDER_LOG_TYPE.Warning,
             });
             await this.stopBot(bot.id, bot.coin.id);
@@ -154,7 +152,7 @@ export class VolumeBotScheduler {
             await this.orderLogService.createLog({
               exchange: bot.coin.exchange,
               symbol: bot.coin.symbol,
-              text: `Bot ${bot.id} No Sufficient USDT Balance Found! current balance is ${usdtBalance.available}`,
+              text: `Bot has No Sufficient Currency Balance Found! Current balance is ${usdtBalance.available}`,
               type: ORDER_LOG_TYPE.Warning,
             });
             return;
@@ -182,7 +180,7 @@ export class VolumeBotScheduler {
             await this.orderLogService.createLog({
               exchange: bot.coin.exchange,
               symbol: bot.coin.symbol,
-              text: `NOT ORDER PLACE DUE TO PRICE HAS JUST 1 POINT DIFFERENCE B-${buy} S-${sell}`,
+              text: `Trade Skipped - No room for trade`,
               type: ORDER_LOG_TYPE.Warning,
             });
             return;
@@ -199,7 +197,6 @@ export class VolumeBotScheduler {
             parseFloat(bot.tradeAmountMin),
             parseFloat(bot.tradeAmountMax),
           );
-          // console.log('amount ------> ', amount);
 
           // Build order flow
           let order: any[] = [];
@@ -246,7 +243,7 @@ export class VolumeBotScheduler {
                 await this.orderLogService.createLog({
                   exchange: bot.coin.exchange,
                   symbol: bot.coin.symbol,
-                  text: `NOT ENOUGH COIN BALANCE TO PLACE ORDER BALANCE = ${coinBalance}`,
+                  text: `Bot has No Sufficient Token Balance Found! Current balance is ${coinBalance}`,
                   type: ORDER_LOG_TYPE.Warning,
                 });
                 return;
@@ -278,7 +275,7 @@ export class VolumeBotScheduler {
                 await this.orderLogService.createLog({
                   exchange: bot.coin.exchange,
                   symbol: bot.coin.symbol,
-                  text: `NOT ENOUGH COIN BALANCE TO PLACE ORDER BALANCE = ${coinBalance}`,
+                  text: `Bot has No Sufficient Token Balance Found! Current balance is ${coinBalance}`,
                   type: ORDER_LOG_TYPE.Warning,
                 });
                 return;
@@ -318,7 +315,7 @@ export class VolumeBotScheduler {
                 await this.orderLogService.createLog({
                   exchange: bot.coin.exchange,
                   symbol: bot.coin.symbol,
-                  text: `NOT ENOUGH COIN BALANCE TO PLACE ORDER BALANCE = ${coinBalance}`,
+                  text: `Bot has No Sufficient Token Balance Found! Current balance is ${coinBalance}`,
                   type: ORDER_LOG_TYPE.Warning,
                 });
                 return;

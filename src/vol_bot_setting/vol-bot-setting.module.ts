@@ -9,10 +9,11 @@ import { VolumeBotScheduler } from './vol-bot-scheduler';
 import { MexcModule } from 'src/mexc/mexc.module';
 import { BalanceModule } from 'src/balance/balances.module';
 import { Coins } from 'src/coins/entities/coin.entity';
+import { ResetBalanceHistory } from './entities/reset-balance.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Coins, VolumeBotSettings]),
+    TypeOrmModule.forFeature([Coins, VolumeBotSettings, ResetBalanceHistory]),
     forwardRef(() => OrderModule),
     forwardRef(() => CoinsModule),
     MexcModule,

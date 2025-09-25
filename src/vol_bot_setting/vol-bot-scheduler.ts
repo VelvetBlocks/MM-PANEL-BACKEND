@@ -26,38 +26,32 @@ export class VolumeBotScheduler {
   // Track next execution time per bot in memory
   private nextExecutionMap: Map<number, number> = new Map();
 
+  // track bot execution in memory
+  private runningBots: Set<number> = new Set();
+
   @Cron('*/1 * * * * *')
   async checkBots() {
     const allBots = await this.botRepo.find({ relations: ['coin'] });
     const activeBots = allBots.filter((bot) => bot.status === Status.ON);
 
     for (const bot of activeBots) {
-      if ((bot.creds && !bot.creds?.apiKey) || !bot.creds?.secretKey) {
-        return;
+      if (!bot.creds?.apiKey || !bot.creds?.secretKey) continue;
+
+      // prevent overlapping execution
+      if (this.runningBots.has(bot.id)) {
+        this.logger.debug(`Bot ${bot.id} already running, skipping tick.`);
+        continue;
       }
+
       const now = Date.now();
-      let nextExecution = this.nextExecutionMap.get(bot.id);
+      const nextExecution = this.nextExecutionMap.get(bot.id) || 0;
 
-      // --- FIRST RUN ---
-      if (!nextExecution) {
-        // run immediately
-        const balance: any = await this.mexcService.getBalances(bot.creds);
-        const balances = balance?.balances ?? [];
-        await this.executeBot(bot, balances);
+      if (now < nextExecution) continue;
 
-        // schedule next execution in [min,max]
-        const delay = this.getRandomInt(bot.executionTimingMin, bot.executionTimingMax) * 1000;
-        this.nextExecutionMap.set(bot.id, now + delay);
+      try {
+        this.runningBots.add(bot.id);
 
-        this.logger.log(
-          `Bot ${bot.coin.exchange} ${bot.coin.name} executed immediately (first run). Next in ${delay / 1000}s`,
-        );
-        continue; // go to next bot
-      }
-
-      // --- SUBSEQUENT RUNS ---
-      if (now >= nextExecution) {
-        // 1) --- balances + drift checks (unchanged)...
+        // fetch balances
         // fetch live balances
         const balance: any = await this.mexcService.getBalances(bot.creds);
         const balances = balance?.balances ?? [];
@@ -122,68 +116,55 @@ export class VolumeBotScheduler {
           await this.stopBot(bot.id, bot.coin.id);
           return;
         }
+
+        // execute bot
         await this.executeBot(bot, balances);
 
+        // schedule next execution AFTER bot finishes
         const delay = this.getRandomInt(bot.executionTimingMin, bot.executionTimingMax) * 1000;
         this.nextExecutionMap.set(bot.id, now + delay);
-
-        this.logger.log(
-          `Bot ${bot.coin.exchange} ${bot.coin.name} executed. Next in ${delay / 1000}s`,
-        );
+        this.logger.log(`Bot ${bot.id} next execution in ${delay / 1000}s`);
+      } catch (err) {
+        this.logger.error(`Bot ${bot.id} execution failed: ${err.message}`);
+      } finally {
+        this.runningBots.delete(bot.id); // release lock
       }
     }
   }
 
   // async checkBots() {
-  //   const allBots = await this.botRepo.find({
-  //     relations: ['coin'],
-  //   });
-
-  //   // only active bots
+  //   const allBots = await this.botRepo.find({ relations: ['coin'] });
   //   const activeBots = allBots.filter((bot) => bot.status === Status.ON);
 
   //   for (const bot of activeBots) {
-  //     // fetch live balances
+  //     if (!bot.creds?.apiKey || !bot.creds?.secretKey) continue;
+
+  //     const now = Date.now();
+  //     const nextExecution = this.nextExecutionMap.get(bot.id);
+
+  //     // === ALWAYS FETCH BALANCE FIRST ===
   //     const balance: any = await this.mexcService.getBalances(bot.creds);
   //     const balances = balance?.balances ?? [];
 
   //     const liveUsdtRaw = balances.find((b: any) => b.asset === 'USDT')?.available ?? 0;
   //     const liveCoinRaw = balances.find((b: any) => b.asset === bot.coin.name)?.available ?? 0;
 
-  //     // Normalize to numbers
   //     const liveUsdt = parseFloat(liveUsdtRaw as any) || 0;
   //     const liveCoin = parseFloat(liveCoinRaw as any) || 0;
-
-  //     // DB snapshot values (make sure these fields exist and are numeric)
   //     const dbUsdt = parseFloat(String(bot.usdt_balance ?? 0)) || 0;
   //     const dbCoin = parseFloat(String(bot.token_balance ?? 0)) || 0;
 
-  //     // Throttle values (fallback to 0)
   //     const tokenMinus = parseFloat(String(bot.tokenThrottleMinus ?? 0)) || 0;
   //     const tokenPlus = parseFloat(String(bot.tokenThrottlePlus ?? 0)) || 0;
   //     const currencyMinus = parseFloat(String(bot.currencyThrottleMinus ?? 0)) || 0;
   //     const currencyPlus = parseFloat(String(bot.currencyThrottlePlus ?? 0)) || 0;
 
-  //     // Compute bounds
   //     const usdtLower = dbUsdt - currencyMinus;
   //     const usdtUpper = dbUsdt + currencyPlus;
   //     const coinLower = dbCoin - tokenMinus;
   //     const coinUpper = dbCoin + tokenPlus;
 
-  //     // Debug logging (fixed labels)
-  //     this.logger.debug(`BOT[${bot.id}] BALANCE CHECK:
-  //     DB USDT = ${dbUsdt}, live USDT = ${liveUsdt}
-  //     currencyThrottleMinus = ${currencyMinus}, currencyThrottlePlus = ${currencyPlus}
-  //     USDT bounds = [${usdtLower}, ${usdtUpper}]
-  //     inRange = ${liveUsdt >= usdtLower && liveUsdt <= usdtUpper}
-
-  //     DB COIN = ${dbCoin}, live COIN = ${liveCoin}
-  //     tokenThrottleMinus = ${tokenMinus}, tokenThrottlePlus = ${tokenPlus}
-  //     COIN bounds = [${coinLower}, ${coinUpper}]
-  //     inRange = ${liveCoin >= coinLower && liveCoin <= coinUpper}
-  //   `);
-
-  //     // out-of-range handling
+  //     // ✅ ALWAYS enforce throttle check before executing
   //     if (liveUsdt < usdtLower || liveUsdt > usdtUpper) {
   //       this.logger.warn(`Bot ${bot.id} stopped: USDT balance drift.`);
   //       await this.orderLogService.createLog({
@@ -193,7 +174,7 @@ export class VolumeBotScheduler {
   //         type: ORDER_LOG_TYPE.Warning,
   //       });
   //       await this.stopBot(bot.id, bot.coin.id);
-  //       return;
+  //       continue;
   //     }
 
   //     if (liveCoin < coinLower || liveCoin > coinUpper) {
@@ -205,31 +186,41 @@ export class VolumeBotScheduler {
   //         type: ORDER_LOG_TYPE.Warning,
   //       });
   //       await this.stopBot(bot.id, bot.coin.id);
-  //       return;
+  //       continue;
   //     }
 
-  //     // execution timing
-  //     const now = Date.now();
-  //     const nextExecution = this.nextExecutionMap.get(bot.id) || 0;
-  //     if (now >= nextExecution) {
-  //       await this.executeBot(bot);
+  //     if (!nextExecution) {
+  //       await this.executeBot(bot, balances);
+  //       // force next execution to be min+random
+  //       const delay = this.getRandomInt(bot.executionTimingMin, bot.executionTimingMax) * 1000;
+  //       const nextRun = now + delay;
+  //       this.nextExecutionMap.set(bot.id, nextRun);
+  //       this.logger.log(
+  //         `Bot ${bot.coin.exchange} ${bot.coin.name} executed immediately. Next in ${delay / 1000}s`,
+  //       );
+  //       continue;
+  //     }
 
-  //       // schedule next run
+  //     // === SUBSEQUENT RUNS ===
+  //     if (now >= nextExecution) {
+  //       await this.executeBot(bot, balances);
   //       const delay = this.getRandomInt(bot.executionTimingMin, bot.executionTimingMax) * 1000;
   //       this.nextExecutionMap.set(bot.id, now + delay);
-
   //       this.logger.log(
-  //         `Bot of ${bot.coin.exchange} ${bot.coin.name} scheduled next execution in ${delay / 1000}s`,
+  //         `Bot ${bot.coin.exchange} ${bot.coin.name} executed. Next in ${delay / 1000}s`,
   //       );
+  //     } else {
+  //       // const wait = Math.ceil((nextExecution - now) / 1000);
+  //       // this.logger.debug(`Bot ${bot.id} not due yet. Next in ${wait}s`);
   //     }
   //   }
   // }
 
   private async executeBot(bot: VolumeBotSettings, balances: any[]) {
     try {
-      // this.logger.warn(
-      //   `// ============================================================= BOT ${bot.id} EXECUTE =============================================================//`,
-      // );
+      this.logger.warn(
+        `// ============================================================= BOT ${bot.id} EXECUTE =============================================================//`,
+      );
       // return;
       switch (bot.coin.exchange) {
         case Exchange.MEXC:
@@ -252,6 +243,12 @@ export class VolumeBotScheduler {
           // Find balances
           const usdtBalance = balances.find((b: any) => b.asset === 'USDT');
           const coinBalance = balances.find((b: any) => b.asset === bot.coin.name)?.available ?? 0;
+          // console.log(
+          //   'BALANCE USDT--------------> ',
+          //   usdtBalance,
+          //   'BALANCE COIN--------------> ',
+          //   coinBalance,
+          // );
           if (
             !usdtBalance ||
             usdtBalance.available <= MEXC_REQUIRED_MIN_BALANCE ||
@@ -297,9 +294,9 @@ export class VolumeBotScheduler {
 
           // Spread & price calculations
           const spread = +(sell - buy).toFixed(bot.priceDecimal);
-          console.log('spread ------> ', spread);
+          // console.log('spread ------> ', spread);
           const multiplyPrice = +(spread * bot.tradeParam); // DON'T APPLY HERE TO FIX WE NEED HERE ALL POINTS
-          console.log('multiplyPrice ------> ', multiplyPrice);
+          // console.log('multiplyPrice ------> ', multiplyPrice);
 
           // Random trade amount
           const amount = this.getRandomFloat(
@@ -433,7 +430,7 @@ export class VolumeBotScheduler {
               break;
           }
 
-          console.log('ORDERS ---------------- :', order);
+          // console.log('ORDERS ---------------- :', order);
 
           // Execute batch order
           const orders = await this.orderService.createBatch(

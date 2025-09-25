@@ -251,8 +251,8 @@ export class VolumeBotScheduler {
           // );
           if (
             !usdtBalance ||
-            usdtBalance.available <= MEXC_REQUIRED_MIN_BALANCE ||
-            bot.tradeAmountMin > usdtBalance.available
+            parseFloat(usdtBalance.available) <= MEXC_REQUIRED_MIN_BALANCE ||
+            parseFloat(bot.tradeAmountMin) > parseFloat(usdtBalance.available)
           ) {
             console.log('No sufficient USDT balance found.');
             await this.orderLogService.createLog({
@@ -295,7 +295,7 @@ export class VolumeBotScheduler {
           // Spread & price calculations
           const spread = +(sell - buy).toFixed(bot.priceDecimal);
           // console.log('spread ------> ', spread);
-          const multiplyPrice = +(spread * bot.tradeParam); // DON'T APPLY HERE TO FIX WE NEED HERE ALL POINTS
+          const multiplyPrice = +(spread * bot.tradeParam); // DON'T APPLY HERE .toFixed() WE NEED HERE ALL POINTS
           // console.log('multiplyPrice ------> ', multiplyPrice);
 
           // Random trade amount

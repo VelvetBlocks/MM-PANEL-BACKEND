@@ -9,7 +9,7 @@ import {
   Min,
   Max,
 } from 'class-validator';
-import { Exchange, Status } from '../entities/coin.entity';
+import { BotType, Exchange, Status } from '../entities/coin.entity';
 
 export class CreateCoinDto {
   @ApiProperty({ description: 'User ID from system', example: 'user_123' })
@@ -122,7 +122,11 @@ export class BotStatusUpdateDto {
   @ApiProperty({ description: 'VolumeBotSetting ID', example: 1 })
   @IsInt()
   @IsNotEmpty()
-  id: number;
+  coinId: number;
+
+  @ApiProperty({ enum: BotType })
+  @IsEnum(BotType, { message: 'Exchange must be one of VOLUME, MM' })
+  botType: BotType;
 
   @ApiProperty({
     description: 'Status of coin',

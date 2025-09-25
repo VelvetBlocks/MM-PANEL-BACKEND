@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { VolumeBotSettings } from './entities/vol-bot-setting.entity';
 import { UpdateVolumeBotSettingsDto } from './dto/vol-bot-setting.dto';
-import { Exchange } from 'src/coins/entities/coin.entity';
+import { Exchange, Status } from 'src/coins/entities/coin.entity';
 import { MexcService } from 'src/mexc/mexc.service';
 import { BalanceService } from 'src/balance/balances.service';
 import { plainToInstance } from 'class-transformer';
@@ -200,5 +200,12 @@ export class VolumeBotSettingsService {
     return this.botRepo.find({
       relations: ['coin'],
     });
+  }
+
+  async statusUpdate(id: number, status: Status): Promise<VolumeBotSettings> {
+    const botSetting = await this.botRepo.findOne({ where: { coin: { id } } });
+    if (!botSetting) throw new NotFoundException('Bot setting not found');
+    botSetting.status = status;
+    return await this.botRepo.save(botSetting);
   }
 }

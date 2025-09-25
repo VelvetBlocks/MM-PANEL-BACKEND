@@ -15,6 +15,11 @@ export enum Exchange {
   BINANCE = 'BINANCE',
 }
 
+export enum BotType {
+  Volume = 'VOLUME',
+  Mm = 'MM',
+}
+
 export enum Status {
   ON = 'ON',
   OFF = 'OFF',
@@ -31,10 +36,6 @@ export class Coins {
   @ApiProperty({ description: 'User ID from system' })
   @Column({ type: 'varchar', length: 100 })
   userId: string;
-
-  // 🔹 Option B: proper relation (recommended)
-  // @ManyToOne(() => User, (user) => user.coins, { onDelete: 'CASCADE' })
-  // user: User;
 
   @ApiProperty({
     description: 'Exchange for coins (MEXC, HTX, BINANCE)',

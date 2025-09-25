@@ -5,7 +5,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { TRADE_FLOW, VolumeBotSettings } from './entities/vol-bot-setting.entity';
 import { OrderService } from 'src/order/order.service';
 import { ORDER_SIDE, ORDER_STATUS, ORDER_TYPE } from 'src/order/entities/order.entity';
-import { Exchange, Status } from 'src/coins/entities/coin.entity';
+import { BotType, Exchange, Status } from 'src/coins/entities/coin.entity';
 import { MEXC_REQUIRED_MIN_BALANCE, MexcService } from 'src/mexc/mexc.service';
 import { CoinsService } from 'src/coins/coin.service';
 import { OrderLogService } from 'src/order/services/order-log.service';
@@ -28,99 +28,209 @@ export class VolumeBotScheduler {
 
   @Cron('*/1 * * * * *')
   async checkBots() {
-    // fetch all bots with their coin relation (already eager loaded in entity)
-    // const activeBots = await this.botRepo.find({ where: { status: 1 } });
-    const allBots = await this.botRepo.find({
-      relations: ['coin'],
-    });
-
-    // filter only bots whose coin status is ON
-    const activeBots = allBots.filter((bot) => bot.coin.status === Status.ON);
+    const allBots = await this.botRepo.find({ relations: ['coin'] });
+    const activeBots = allBots.filter((bot) => bot.status === Status.ON);
 
     for (const bot of activeBots) {
-      // fetch live balances
-      const balance: any = await this.mexcService.getBalances(bot.creds);
-      const balances = balance?.balances ?? [];
-
-      const liveUsdtRaw = balances.find((b: any) => b.asset === 'USDT')?.available ?? 0;
-      const liveCoinRaw = balances.find((b: any) => b.asset === bot.coin.name)?.available ?? 0;
-
-      // Normalize to numbers
-      const liveUsdt = parseFloat(liveUsdtRaw as any) || 0;
-      const liveCoin = parseFloat(liveCoinRaw as any) || 0;
-
-      // DB snapshot values (make sure these fields exist and are numeric)
-      const dbUsdt = parseFloat(String(bot.usdt_balance ?? 0)) || 0;
-      const dbCoin = parseFloat(String(bot.token_balance ?? 0)) || 0;
-
-      // Throttle values (fallback to 0)
-      const tokenMinus = parseFloat(String(bot.tokenThrottleMinus ?? 0)) || 0;
-      const tokenPlus = parseFloat(String(bot.tokenThrottlePlus ?? 0)) || 0;
-      const currencyMinus = parseFloat(String(bot.currencyThrottleMinus ?? 0)) || 0;
-      const currencyPlus = parseFloat(String(bot.currencyThrottlePlus ?? 0)) || 0;
-
-      // Compute bounds
-      const usdtLower = dbUsdt - currencyMinus;
-      const usdtUpper = dbUsdt + currencyPlus;
-      const coinLower = dbCoin - tokenMinus;
-      const coinUpper = dbCoin + tokenPlus;
-
-      // Log everything - this will show exactly why the check passes/fails
-      this.logger.debug(`BOT[${bot.id}] BALANCE CHECK:
-        DB USDT = ${dbUsdt}, live USDT = ${liveUsdt}
-        currencyThrottleMinus = ${tokenMinus}, currencyThrottlePlus = ${tokenPlus}
-        USDT bounds = [${usdtLower}, ${usdtUpper}]
-        inRange = ${liveUsdt >= usdtLower && liveUsdt <= usdtUpper}
-        DB COIN = ${dbCoin}, live COIN = ${liveCoin}
-        tokenThrottleMinus = ${currencyMinus}, tokenThrottlePlus = ${currencyPlus}
-        COIN bounds = [${coinLower}, ${coinUpper}]
-        inRange = ${liveCoin >= coinLower && liveCoin <= coinUpper}
-      `);
-
-      // final out-of-range flags
-      if (liveUsdt < usdtLower || liveUsdt > usdtUpper) {
-        this.logger.warn(`Bot ${bot.id} stopped: balance drift detected.`);
-        await this.orderLogService.createLog({
-          exchange: bot.coin.exchange,
-          symbol: bot.coin.symbol,
-          text: `Currency  ${liveUsdt < usdtLower ? 'Lower' : 'Upper'} Throttle Bot stopped. Before: ${dbUsdt}, Current: ${liveUsdt}`,
-          type: ORDER_LOG_TYPE.Warning,
-        });
-        await this.stopBot(bot.id, bot.coin.id);
+      if ((bot.creds && !bot.creds?.apiKey) || !bot.creds?.secretKey) {
         return;
       }
-
-      if (liveCoin < coinLower || liveCoin > coinUpper) {
-        this.logger.warn(`Bot ${bot.id} stopped: balance drift detected.`);
-        await this.orderLogService.createLog({
-          exchange: bot.coin.exchange,
-          symbol: bot.coin.symbol,
-          text: `Token  ${liveCoin < coinLower ? 'Lower' : 'Upper'} Throttle Bot stopped. Before: ${dbCoin}, Current: ${liveCoin}`,
-          type: ORDER_LOG_TYPE.Warning,
-        });
-        await this.stopBot(bot.id, bot.coin.id);
-        return;
-      }
-
       const now = Date.now();
-      const nextExecution = this.nextExecutionMap.get(bot.id) || 0;
+      let nextExecution = this.nextExecutionMap.get(bot.id);
 
-      if (now >= nextExecution) {
-        await this.executeBot(bot);
+      // --- FIRST RUN ---
+      if (!nextExecution) {
+        // run immediately
+        const balance: any = await this.mexcService.getBalances(bot.creds);
+        const balances = balance?.balances ?? [];
+        await this.executeBot(bot, balances);
 
-        // schedule next execution with new random delay
+        // schedule next execution in [min,max]
         const delay = this.getRandomInt(bot.executionTimingMin, bot.executionTimingMax) * 1000;
         this.nextExecutionMap.set(bot.id, now + delay);
 
         this.logger.log(
-          `Bot of ${bot.coin.exchange} ${bot.coin.name} scheduled next execution in ${delay / 1000} seconds`,
+          `Bot ${bot.coin.exchange} ${bot.coin.name} executed immediately (first run). Next in ${delay / 1000}s`,
+        );
+        continue; // go to next bot
+      }
+
+      // --- SUBSEQUENT RUNS ---
+      if (now >= nextExecution) {
+        // 1) --- balances + drift checks (unchanged)...
+        // fetch live balances
+        const balance: any = await this.mexcService.getBalances(bot.creds);
+        const balances = balance?.balances ?? [];
+
+        const liveUsdtRaw = balances.find((b: any) => b.asset === 'USDT')?.available ?? 0;
+        const liveCoinRaw = balances.find((b: any) => b.asset === bot.coin.name)?.available ?? 0;
+
+        // Normalize to numbers
+        const liveUsdt = parseFloat(liveUsdtRaw as any) || 0;
+        const liveCoin = parseFloat(liveCoinRaw as any) || 0;
+
+        // DB snapshot values (make sure these fields exist and are numeric)
+        const dbUsdt = parseFloat(String(bot.usdt_balance ?? 0)) || 0;
+        const dbCoin = parseFloat(String(bot.token_balance ?? 0)) || 0;
+
+        // Throttle values (fallback to 0)
+        const tokenMinus = parseFloat(String(bot.tokenThrottleMinus ?? 0)) || 0;
+        const tokenPlus = parseFloat(String(bot.tokenThrottlePlus ?? 0)) || 0;
+        const currencyMinus = parseFloat(String(bot.currencyThrottleMinus ?? 0)) || 0;
+        const currencyPlus = parseFloat(String(bot.currencyThrottlePlus ?? 0)) || 0;
+
+        // Compute bounds
+        const usdtLower = dbUsdt - currencyMinus;
+        const usdtUpper = dbUsdt + currencyPlus;
+        const coinLower = dbCoin - tokenMinus;
+        const coinUpper = dbCoin + tokenPlus;
+
+        // Debug logging (fixed labels)
+        this.logger.debug(`BOT[${bot.id}] BALANCE CHECK:
+          DB USDT = ${dbUsdt}, live USDT = ${liveUsdt}
+          currencyThrottleMinus = ${currencyMinus}, currencyThrottlePlus = ${currencyPlus}
+          USDT bounds = [${usdtLower}, ${usdtUpper}]
+          inRange = ${liveUsdt >= usdtLower && liveUsdt <= usdtUpper}
+
+          DB COIN = ${dbCoin}, live COIN = ${liveCoin}
+          tokenThrottleMinus = ${tokenMinus}, tokenThrottlePlus = ${tokenPlus}
+          COIN bounds = [${coinLower}, ${coinUpper}]
+          inRange = ${liveCoin >= coinLower && liveCoin <= coinUpper}
+        `);
+
+        // out-of-range handling
+        if (liveUsdt < usdtLower || liveUsdt > usdtUpper) {
+          this.logger.warn(`Bot ${bot.id} stopped: USDT balance drift.`);
+          await this.orderLogService.createLog({
+            exchange: bot.coin.exchange,
+            symbol: bot.coin.symbol,
+            text: `Currency ${liveUsdt < usdtLower ? 'Lower' : 'Upper'} Throttle Bot stopped. Before: ${dbUsdt}, Current: ${liveUsdt}`,
+            type: ORDER_LOG_TYPE.Warning,
+          });
+          await this.stopBot(bot.id, bot.coin.id);
+          return;
+        }
+
+        if (liveCoin < coinLower || liveCoin > coinUpper) {
+          this.logger.warn(`Bot ${bot.id} stopped: Token balance drift.`);
+          await this.orderLogService.createLog({
+            exchange: bot.coin.exchange,
+            symbol: bot.coin.symbol,
+            text: `Token ${liveCoin < coinLower ? 'Lower' : 'Upper'} Throttle Bot stopped. Before: ${dbCoin}, Current: ${liveCoin}`,
+            type: ORDER_LOG_TYPE.Warning,
+          });
+          await this.stopBot(bot.id, bot.coin.id);
+          return;
+        }
+        await this.executeBot(bot, balances);
+
+        const delay = this.getRandomInt(bot.executionTimingMin, bot.executionTimingMax) * 1000;
+        this.nextExecutionMap.set(bot.id, now + delay);
+
+        this.logger.log(
+          `Bot ${bot.coin.exchange} ${bot.coin.name} executed. Next in ${delay / 1000}s`,
         );
       }
     }
   }
 
-  private async executeBot(bot: VolumeBotSettings) {
+  // async checkBots() {
+  //   const allBots = await this.botRepo.find({
+  //     relations: ['coin'],
+  //   });
+
+  //   // only active bots
+  //   const activeBots = allBots.filter((bot) => bot.status === Status.ON);
+
+  //   for (const bot of activeBots) {
+  //     // fetch live balances
+  //     const balance: any = await this.mexcService.getBalances(bot.creds);
+  //     const balances = balance?.balances ?? [];
+
+  //     const liveUsdtRaw = balances.find((b: any) => b.asset === 'USDT')?.available ?? 0;
+  //     const liveCoinRaw = balances.find((b: any) => b.asset === bot.coin.name)?.available ?? 0;
+
+  //     // Normalize to numbers
+  //     const liveUsdt = parseFloat(liveUsdtRaw as any) || 0;
+  //     const liveCoin = parseFloat(liveCoinRaw as any) || 0;
+
+  //     // DB snapshot values (make sure these fields exist and are numeric)
+  //     const dbUsdt = parseFloat(String(bot.usdt_balance ?? 0)) || 0;
+  //     const dbCoin = parseFloat(String(bot.token_balance ?? 0)) || 0;
+
+  //     // Throttle values (fallback to 0)
+  //     const tokenMinus = parseFloat(String(bot.tokenThrottleMinus ?? 0)) || 0;
+  //     const tokenPlus = parseFloat(String(bot.tokenThrottlePlus ?? 0)) || 0;
+  //     const currencyMinus = parseFloat(String(bot.currencyThrottleMinus ?? 0)) || 0;
+  //     const currencyPlus = parseFloat(String(bot.currencyThrottlePlus ?? 0)) || 0;
+
+  //     // Compute bounds
+  //     const usdtLower = dbUsdt - currencyMinus;
+  //     const usdtUpper = dbUsdt + currencyPlus;
+  //     const coinLower = dbCoin - tokenMinus;
+  //     const coinUpper = dbCoin + tokenPlus;
+
+  //     // Debug logging (fixed labels)
+  //     this.logger.debug(`BOT[${bot.id}] BALANCE CHECK:
+  //     DB USDT = ${dbUsdt}, live USDT = ${liveUsdt}
+  //     currencyThrottleMinus = ${currencyMinus}, currencyThrottlePlus = ${currencyPlus}
+  //     USDT bounds = [${usdtLower}, ${usdtUpper}]
+  //     inRange = ${liveUsdt >= usdtLower && liveUsdt <= usdtUpper}
+
+  //     DB COIN = ${dbCoin}, live COIN = ${liveCoin}
+  //     tokenThrottleMinus = ${tokenMinus}, tokenThrottlePlus = ${tokenPlus}
+  //     COIN bounds = [${coinLower}, ${coinUpper}]
+  //     inRange = ${liveCoin >= coinLower && liveCoin <= coinUpper}
+  //   `);
+
+  //     // out-of-range handling
+  //     if (liveUsdt < usdtLower || liveUsdt > usdtUpper) {
+  //       this.logger.warn(`Bot ${bot.id} stopped: USDT balance drift.`);
+  //       await this.orderLogService.createLog({
+  //         exchange: bot.coin.exchange,
+  //         symbol: bot.coin.symbol,
+  //         text: `Currency ${liveUsdt < usdtLower ? 'Lower' : 'Upper'} Throttle Bot stopped. Before: ${dbUsdt}, Current: ${liveUsdt}`,
+  //         type: ORDER_LOG_TYPE.Warning,
+  //       });
+  //       await this.stopBot(bot.id, bot.coin.id);
+  //       return;
+  //     }
+
+  //     if (liveCoin < coinLower || liveCoin > coinUpper) {
+  //       this.logger.warn(`Bot ${bot.id} stopped: Token balance drift.`);
+  //       await this.orderLogService.createLog({
+  //         exchange: bot.coin.exchange,
+  //         symbol: bot.coin.symbol,
+  //         text: `Token ${liveCoin < coinLower ? 'Lower' : 'Upper'} Throttle Bot stopped. Before: ${dbCoin}, Current: ${liveCoin}`,
+  //         type: ORDER_LOG_TYPE.Warning,
+  //       });
+  //       await this.stopBot(bot.id, bot.coin.id);
+  //       return;
+  //     }
+
+  //     // execution timing
+  //     const now = Date.now();
+  //     const nextExecution = this.nextExecutionMap.get(bot.id) || 0;
+  //     if (now >= nextExecution) {
+  //       await this.executeBot(bot);
+
+  //       // schedule next run
+  //       const delay = this.getRandomInt(bot.executionTimingMin, bot.executionTimingMax) * 1000;
+  //       this.nextExecutionMap.set(bot.id, now + delay);
+
+  //       this.logger.log(
+  //         `Bot of ${bot.coin.exchange} ${bot.coin.name} scheduled next execution in ${delay / 1000}s`,
+  //       );
+  //     }
+  //   }
+  // }
+
+  private async executeBot(bot: VolumeBotSettings, balances: any[]) {
     try {
+      // this.logger.warn(
+      //   `// ============================================================= BOT ${bot.id} EXECUTE =============================================================//`,
+      // );
+      // return;
       switch (bot.coin.exchange) {
         case Exchange.MEXC:
           const volume = await this.mexcService.fetch24hrVolumesSymbolWise(bot.creds, 'LFUSDT');
@@ -136,13 +246,12 @@ export class VolumeBotScheduler {
             return;
           }
           // Fetch balances
-          const balance: any = await this.mexcService.getBalances(bot.creds);
-          const balances = balance?.balances ?? [];
+          // const balance: any = await this.mexcService.getBalances(bot.creds);
+          // const balances = balance?.balances ?? [];
 
           // Find balances
           const usdtBalance = balances.find((b: any) => b.asset === 'USDT');
           const coinBalance = balances.find((b: any) => b.asset === bot.coin.name)?.available ?? 0;
-
           if (
             !usdtBalance ||
             usdtBalance.available <= MEXC_REQUIRED_MIN_BALANCE ||
@@ -362,8 +471,8 @@ export class VolumeBotScheduler {
     }
   }
 
-  private async stopBot(botId: number, id: number) {
-    await this.coinService.statusUpdate({ id, status: Status.OFF });
+  private async stopBot(botId: number, coinId: number) {
+    await this.coinService.statusUpdate({ coinId, botType: BotType.Volume, status: Status.OFF });
     this.nextExecutionMap.delete(botId); // stop scheduling further
   }
 

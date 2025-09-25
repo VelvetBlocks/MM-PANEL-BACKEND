@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Coins, Exchange } from './entities/coin.entity';
+import { BotType, Coins, Exchange } from './entities/coin.entity';
 import { BotStatusUpdateDto, CreateCoinDto, FindExcCoinsDto } from './dto/create-coin.dto';
 import { VolumeBotSettingsService } from 'src/vol_bot_setting/vol-bot-setting.service';
 import { VolumeBotSettings } from 'src/vol_bot_setting/entities/vol-bot-setting.entity';
@@ -219,11 +219,25 @@ export class CoinsService {
   }
 
   // Update VolumeBotSetting by ID
-  async statusUpdate(data: BotStatusUpdateDto): Promise<Coins> {
-    const botSetting = await this.coinsRepo.findOne({ where: { id: data.id } });
-    if (!botSetting) throw new NotFoundException('Bot setting not found');
-    botSetting.status = data.status;
-    return await this.coinsRepo.save(botSetting);
+  async statusUpdate(data: BotStatusUpdateDto) {
+    const { coinId, botType, status } = data;
+
+    const coin = await this.coinsRepo.findOne({
+      where: { id: coinId },
+      relations: ['volBotSettings'], // preload relations
+    });
+
+    if (!coin) throw new NotFoundException('Coin not found');
+
+    switch (botType) {
+      case BotType.Volume: {
+        return this.volumeBotSettingsService.statusUpdate(coinId, status);
+      }
+      case BotType.Mm: {
+      }
+      default:
+        throw new BadRequestException('Unsupported bot type');
+    }
   }
 
   /** Get coin by ID */

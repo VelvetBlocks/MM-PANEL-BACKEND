@@ -1,6 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { Expose } from 'class-transformer';
-import { Coins } from 'src/coins/entities/coin.entity';
+import { Coins, Status } from 'src/coins/entities/coin.entity';
 import {
   Column,
   CreateDateColumn,
@@ -113,9 +113,9 @@ export class VolumeBotSettings {
   @Column({ type: 'varchar', length: 20, default: '' })
   version: string;
 
-  @ApiProperty({ description: 'Bot version' })
-  @Column({ type: 'smallint', default: 0 })
-  status: number;
+  @ApiProperty({ description: 'Bots status', enum: Status })
+  @Column({ type: 'enum', enum: Status, default: Status.OFF })
+  status: Status;
 
   @ApiProperty({
     description: 'API credentials (stored as JSON)',
